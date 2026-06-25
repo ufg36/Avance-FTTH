@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1117">
+<title>FTTH · Control de Obra</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f1117;--bg2:#181c25;--bg3:#1e2330;--bg4:#242938;
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.13);
+  --text:#e8eaf0;--text2:#8892a4;--text3:#4d5666;
+  --accent:#3b82f6;--accent2:#1d4ed8;
+  --green:#10b981;--amber:#f59e0b;--red:#ef4444;--gray:#6b7280;--purple:#8b5cf6;
+  --font-mono:'IBM Plex Mono',monospace;--font:'IBM Plex Sans',sans-serif;
+  --r:10px;--r2:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--text);overflow:hidden}
+.s-planificado{--sc:var(--gray);--sb:#1f2937}
+.s-enconstruccion{--sc:var(--amber);--sb:#451a03}
+.s-instalado{--sc:var(--accent);--sb:#1e3a5f}
+.s-probado{--sc:var(--green);--sb:#064e3b}
+.s-falla{--sc:var(--red);--sb:#450a0a}
+
+/* ── IMPORT SCREEN ── */
+#importScreen{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100vh;height:100dvh;padding:2rem;text-align:center;gap:1.5rem;
+}
+.import-logo{font-size:42px;margin-bottom:.5rem}
+.import-title{font-family:var(--font-mono);font-size:18px;font-weight:600;letter-spacing:.02em}
+.import-sub{font-size:13px;color:var(--text2);line-height:1.6;max-width:300px}
+.import-box{
+  width:100%;max-width:340px;
+  border:2px dashed var(--border2);border-radius:var(--r2);
+  padding:2rem 1.5rem;cursor:pointer;transition:border-color .2s,background .2s;
+  background:var(--bg2);
+}
+.import-box:hover,.import-box.drag{border-color:var(--accent);background:rgba(59,130,246,.06)}
+.import-box input{display:none}
+.import-icon{font-size:28px;margin-bottom:.75rem;display:block}
+.import-box-text{font-family:var(--font-mono);font-size:12px;color:var(--text2)}
+.import-box-hint{font-size:11px;color:var(--text3);margin-top:.5rem}
+.import-progress{width:100%;max-width:340px}
+.prog-bar{height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:8px}
+.prog-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s;width:0%}
+.prog-text{font-family:var(--font-mono);font-size:11px;color:var(--text2);margin-top:6px}
+.import-recent{width:100%;max-width:340px;text-align:left}
+.import-recent-title{font-family:var(--font-mono);font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.recent-item{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);
+  margin-bottom:6px;cursor:pointer;transition:border-color .15s;
+}
+.recent-item:hover{border-color:var(--border2)}
+.recent-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.recent-name{font-family:var(--font-mono);font-size:12px;flex:1}
+.recent-meta{font-size:10px;color:var(--text3)}
+.recent-del{color:var(--text3);font-size:14px;padding:2px 6px;cursor:pointer}
+.recent-del:hover{color:var(--red)}
+
+/* ── APP ── */
+#appScreen{display:none;flex-direction:column;height:100vh;height:100dvh}
+.topbar{
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  padding:12px 14px 8px;flex-shrink:0
+}
+.topbar-row{display:flex;align-items:center;justify-content:space-between}
+.topbar-title{font-family:var(--font-mono);font-size:13px;font-weight:600;letter-spacing:.02em}
+.topbar-back{font-size:18px;color:var(--text2);cursor:pointer;padding-right:8px}
+.topbar-pct{
+  font-family:var(--font-mono);font-size:10px;color:var(--accent);
+  background:rgba(59,130,246,.12);padding:3px 8px;border-radius:20px;
+  border:1px solid rgba(59,130,246,.2)
+}
+.topbar-sub{font-size:10px;color:var(--text3);margin-top:2px;font-family:var(--font-mono)}
+
+/* metrics strip */
+.metrics{
+  display:flex;background:var(--bg2);border-bottom:1px solid var(--border);
+  overflow-x:auto;scrollbar-width:none;flex-shrink:0
+}
+.metrics::-webkit-scrollbar{display:none}
+.metric{flex:0 0 auto;padding:7px 14px;border-right:1px solid var(--border);text-align:center;min-width:68px}
+.metric-val{font-family:var(--font-mono);font-size:18px;font-weight:600}
+.metric-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:1px}
+.metric-bar{height:2px;border-radius:1px;background:var(--bg3);margin-top:4px}
+.metric-fill{height:100%;border-radius:1px;transition:width .4s}
+
+/* nav */
+.navtabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
+.navtab{
+  flex:1;padding:9px 4px 8px;font-size:11px;font-weight:500;
+  text-align:center;cursor:pointer;color:var(--text3);
+  border:none;background:none;border-bottom:2px solid transparent;
+  font-family:var(--font-mono);letter-spacing:.01em;transition:color .15s,border-color .15s
+}
+.navtab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* content */
+.content{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.panel{display:none}.panel.active{display:block}
+
+/* search + filter */
+.search-wrap{padding:10px 12px 0;position:sticky;top:0;z-index:10;background:var(--bg)}
+.search-bar{
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:8px 12px
+}
+.search-bar input{flex:1;background:none;border:none;color:var(--text);font-family:var(--font-mono);font-size:13px;outline:none}
+.search-bar input::placeholder{color:var(--text3)}
+.filterbar{
+  display:flex;gap:5px;padding:8px 12px 0;overflow-x:auto;scrollbar-width:none
+}
+.filterbar::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto;font-size:11px;font-family:var(--font-mono);
+  padding:4px 10px;border-radius:20px;border:1px solid var(--border2);
+  cursor:pointer;white-space:nowrap;background:var(--bg2);color:var(--text2);
+  transition:all .15s
+}
+.chip.active{background:var(--accent);border-color:var(--accent);color:white}
+
+/* nap cards */
+.list-area{padding:8px 12px;display:flex;flex-direction:column;gap:5px}
+.card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--r);padding:11px 12px;cursor:pointer;
+  transition:border-color .15s;-webkit-user-select:none
+}
+.card:active{transform:scale(.99)}
+.card.open{border-color:var(--border2)}
+.card-top{display:flex;align-items:center;gap:9px}
+.card-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--sc)}
+.card-name{font-family:var(--font-mono);font-size:13px;font-weight:600;flex:1}
+.card-trk{font-size:10px;color:var(--text3);font-family:var(--font-mono)}
+.status-pill{
+  font-size:9px;font-family:var(--font-mono);
+  padding:2px 7px;border-radius:20px;
+  background:var(--sb);color:var(--sc);border:1px solid var(--sc);white-space:nowrap
+}
+.card-meta{display:flex;gap:10px;margin-top:6px;font-size:10px;color:var(--text2);font-family:var(--font-mono)}
+.card-body{border-top:1px solid var(--border);margin-top:9px;padding-top:9px}
+.section-label{font-family:var(--font-mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.status-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:5px;margin-bottom:10px}
+.status-btn{
+  padding:7px;border-radius:7px;border:1px solid var(--border);
+  font-size:10px;font-family:var(--font-mono);cursor:pointer;
+  text-align:center;background:var(--bg3);color:var(--text2);transition:all .15s
+}
+.status-btn.active{border-color:var(--sc);color:var(--sc);background:var(--sb)}
+.cdo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:3px}
+.cdo-cell{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:5px;padding:5px 2px;text-align:center;
+  font-family:var(--font-mono);font-size:9px;cursor:pointer;transition:all .1s
+}
+.cdo-cell.s-planificado{}
+.cdo-cell.s-enconstruccion{border-color:var(--amber);color:var(--amber);background:rgba(245,158,11,.1)}
+.cdo-cell.s-instalado{border-color:var(--accent);color:var(--accent);background:rgba(59,130,246,.1)}
+.cdo-cell.s-probado{border-color:var(--green);color:var(--green);background:rgba(16,185,129,.1)}
+.cdo-cell.s-falla{border-color:var(--red);color:var(--red);background:rgba(239,68,68,.1)}
+.cdo-type{font-size:8px;color:var(--text3);margin-top:1px}
+.cdo-prog{margin-top:6px;font-size:10px;color:var(--text2);font-family:var(--font-mono)}
+
+/* troncales */
+.trk-card{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--r);padding:12px;margin-bottom:5px
+}
+.trk-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.trk-bar{width:3px;height:32px;border-radius:2px;flex-shrink:0}
+.trk-name{font-family:var(--font-mono);font-size:13px;font-weight:600}
+.trk-desc{font-size:10px;color:var(--text2);margin-top:1px}
+.trk-stats{display:flex;gap:10px;font-family:var(--font-mono);font-size:10px;color:var(--text2);margin-bottom:8px;flex-wrap:wrap}
+.trk-nap-chips{display:flex;flex-wrap:wrap;gap:3px}
+.nap-chip{font-size:9px;font-family:var(--font-mono);padding:2px 6px;border-radius:4px;border:1px solid;background:transparent}
+.trk-status-sel{
+  font-size:11px;padding:5px 8px;border:1px solid var(--border);
+  border-radius:7px;background:var(--bg3);color:var(--text);
+  font-family:var(--font-mono);margin-left:auto;cursor:pointer
+}
+
+/* BOM */
+.bom-wrap{padding:8px 12px}
+.bom-header{
+  display:grid;grid-template-columns:120px 1fr 44px 58px;gap:6px;
+  padding:5px 0;border-bottom:1px solid var(--border);
+  font-family:var(--font-mono);font-size:9px;color:var(--text3);
+  text-transform:uppercase;letter-spacing:.05em
+}
+.bom-row{
+  display:grid;grid-template-columns:120px 1fr 44px 58px;gap:6px;
+  padding:7px 0;border-bottom:1px solid var(--border);align-items:center
+}
+.bom-code{font-family:var(--font-mono);font-size:10px;color:var(--text2)}
+.bom-desc{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bom-proy{font-family:var(--font-mono);font-size:11px;font-weight:600;text-align:right;color:var(--text2)}
+.bom-input{
+  font-family:var(--font-mono);font-size:12px;width:100%;text-align:right;
+  background:var(--bg3);border:1px solid var(--border);border-radius:5px;
+  padding:4px 5px;color:var(--text)
+}
+.bom-progress{height:2px;background:var(--bg3);border-radius:1px;margin-top:2px;grid-column:1/-1}
+.bom-pfill{height:100%;border-radius:1px;background:var(--accent);transition:width .3s}
+.bom-group{font-family:var(--font-mono);font-size:9px;color:var(--purple);text-transform:uppercase;letter-spacing:.05em;padding:8px 0 4px;border-bottom:1px solid var(--border)}
+
+/* bottom */
+.bottom-bar{
+  background:var(--bg2);border-top:1px solid var(--border);
+  padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));flex-shrink:0
+}
+.btn-row{display:flex;gap:6px}
+.btn{
+  flex:1;padding:11px 8px;border-radius:var(--r);
+  border:1px solid var(--border2);background:var(--bg3);
+  color:var(--text);font-family:var(--font-mono);font-size:11px;
+  font-weight:500;cursor:pointer;transition:all .15s;text-align:center
+}
+.btn:active{opacity:.8}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:white}
+
+/* toast */
+.toast{
+  position:fixed;bottom:80px;left:50%;
+  transform:translateX(-50%) translateY(12px);
+  background:var(--bg2);border:1px solid var(--border2);
+  border-radius:20px;padding:7px 14px;
+  font-family:var(--font-mono);font-size:11px;color:var(--text);
+  opacity:0;transition:all .22s;z-index:999;white-space:nowrap;pointer-events:none
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* avance panel */
+.avance-wrap{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.avance-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:12px}
+.avance-title{font-family:var(--font-mono);font-size:12px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between}
+.avance-pct{font-size:18px;font-weight:600;font-family:var(--font-mono)}
+.avance-bar{height:6px;background:var(--bg3);border-radius:3px;margin:8px 0}
+.avance-fill{height:100%;border-radius:3px;transition:width .5s}
+.avance-stats{display:flex;gap:8px;flex-wrap:wrap;font-family:var(--font-mono);font-size:10px;color:var(--text2)}
+.avance-stat-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px}
+</style>
+</head>
+<body>
+
+
+<!-- ══ LOGIN SCREEN ══════════════════════════════════════════════ -->
+<div id="loginScreen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;height:100dvh;padding:2rem;text-align:center;gap:1.2rem;background:var(--bg)">
+  <div style="font-size:40px">⬡</div>
+  <div style="font-family:var(--font-mono);font-size:18px;font-weight:600">FTTH Control de Obra</div>
+  <div style="font-size:13px;color:var(--text2);max-width:280px;line-height:1.6">Ingresá tu nombre para identificar tus actualizaciones</div>
+  <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:10px">
+    <input id="userInput" type="text" placeholder="Tu nombre (ej: Juan Inspector)"
+      style="width:100%;padding:13px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font-mono);font-size:14px;outline:none;text-align:center"
+      onkeydown="if(event.key==='Enter') loginUser()">
+    <button onclick="loginUser()"
+      style="width:100%;padding:13px;background:var(--accent);border:none;border-radius:var(--r);color:white;font-family:var(--font-mono);font-size:14px;font-weight:600;cursor:pointer">
+      Entrar →
+    </button>
+  </div>
+  <div style="font-family:var(--font-mono);font-size:10px;color:var(--text3);max-width:280px">Los cambios que hagas se sincronizan con todo el equipo en tiempo real</div>
+</div>
+
+<!-- ══ IMPORT SCREEN ══════════════════════════════════════════════ -->
+<div id="importScreen">
+  <div>
+    <div class="import-logo">⬡</div>
+    <div class="import-title">FTTH Control de Obra</div>
+    <div class="import-sub" style="margin-top:6px">Importá el ADDRO de cualquier obra para ver el control completo</div>
+  </div>
+
+  <label class="import-box" id="dropZone">
+    <input type="file" id="fileInput" accept=".xlsx,.xlsm,.xls">
+    <span class="import-icon">📂</span>
+    <div class="import-box-text">Tocá para abrir el ADDRO</div>
+    <div class="import-box-hint">.xlsx / .xlsm · AdDRO 7.x</div>
+  </label>
+
+  <div class="import-progress" id="importProgress" style="display:none">
+    <div class="prog-text" id="progText">Leyendo archivo...</div>
+    <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+  </div>
+
+  <div class="import-recent" id="recentSection" style="display:none">
+    <div class="import-recent-title">Obras recientes</div>
+    <div id="recentList"></div>
+  </div>
+</div>
+
+<!-- ══ APP SCREEN ════════════════════════════════════════════════ -->
+<div id="appScreen">
+  <div class="topbar">
+    <div class="topbar-row">
+      <div style="display:flex;align-items:center;gap:2px">
+        <span class="topbar-back" onclick="goBack()">‹</span>
+        <div>
+          <div class="topbar-title" id="appTitle">FTTH</div>
+          <div class="topbar-sub" id="appSub"></div>
+    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text3);margin-top:1px" id="userLabel"></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+      <span class="topbar-pct" id="appPct">0%</span>
+      <span id="syncBadge" style="font-family:var(--font-mono);font-size:9px;color:var(--text3)">● Sync</span>
+    </div>
+    </div>
+  </div>
+
+  <div class="metrics" id="metricsStrip"></div>
+
+  <div class="navtabs">
+    <button class="navtab active" onclick="switchTab('red',this)">Red</button>
+    <button class="navtab" onclick="switchTab('troncales',this)">Troncal</button>
+    <button class="navtab" onclick="switchTab('bom',this)">BOM</button>
+    <button class="navtab" onclick="switchTab('avance',this)">Avance</button>
+  </div>
+
+  <div class="content">
+    <!-- RED -->
+    <div id="panel-red" class="panel active">
+      <div class="search-wrap">
+        <div class="search-bar">
+          <span style="color:var(--text3);font-size:13px">⌕</span>
+          <input type="text" id="searchInput" placeholder="Buscar NAP o CDO..." oninput="renderNaps()">
+        </div>
+        <div class="filterbar" id="filterBar"></div>
+      </div>
+      <div class="list-area" id="napList"></div>
+    </div>
+
+    <!-- TRONCALES -->
+    <div id="panel-troncales" class="panel">
+      <div class="list-area" id="trkList"></div>
+    </div>
+
+    <!-- BOM -->
+    <div id="panel-bom" class="panel">
+      <div class="bom-wrap">
+        <div class="bom-header">
+          <span>Código SAP</span><span>Material</span><span style="text-align:right">Proy.</span><span style="text-align:right">Inst.</span>
+        </div>
+        <div id="bomRows"></div>
+      </div>
+    </div>
+
+    <!-- AVANCE -->
+    <div id="panel-avance" class="panel">
+      <div class="avance-wrap" id="avanceWrap"></div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="btn-row">
+      <button class="btn" onclick="exportCSV()">↓ CSV</button>
+      <button class="btn" onclick="resetWork()">↺ Reset</button>
+      <button class="btn primary" onclick="shareProgress()">Compartir</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══ GLOBALS ════════════════════════════════════════════════════════
+let DATA = null;        // Obra cargada
+let STATE = {};         // Estados guardados
+let activeFilter = 'ALL';
+let expandedId = null;
+let activeTab = 'red';
+
+// ══ GOOGLE SHEETS SYNC ═══════════════════════════════════════════
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyZK3dx6v9-tYbPwzpyGWX8LoDaMY3GEDJBAytFFZBXBCUWKZE8TGIb2fKH8SbG_3QWtw/exec';
+let currentUser = null;
+let syncInterval = null;
+let pendingSync = {};   // cambios locales pendientes de subir
+let lastSyncTs  = 0;
+
+async function sheetsGet(){
+  try{
+    const r = await fetch(SHEETS_URL + '?action=get', {cache:'no-store'});
+    const d = await r.json();
+    if(d.ok) return d.data;
+  }catch(e){ console.warn('sheetsGet error', e); }
+  return null;
+}
+
+async function sheetsSet(id, estado){
+  if(!currentUser) return;
+  try{
+    await fetch(SHEETS_URL, {
+      method:'POST',
+      body: JSON.stringify({action:'set', id, estado, usuario:currentUser}),
+    });
+  }catch(e){ console.warn('sheetsSet error', e); }
+}
+
+// Baja todos los estados del sheet y los mezcla con el local
+async function syncDown(){
+  const remote = await sheetsGet();
+  if(!remote) return;
+  let changed = false;
+  Object.entries(remote).forEach(([id, val])=>{
+    // Solo pisamos si el remote es más nuevo que nuestro último push
+    if(!pendingSync[id]){
+      STATE[id] = val.estado;
+      changed = true;
+    }
+  });
+  if(changed) { saveState(); refresh(); }
+  // Limpiar pending que ya subimos
+  pendingSync = {};
+  lastSyncTs = Date.now();
+  updateSyncBadge('ok');
+}
+
+// Sube un cambio individual
+async function syncUp(id, estado){
+  pendingSync[id] = estado;
+  updateSyncBadge('uploading');
+  await sheetsSet(id, estado);
+  delete pendingSync[id];
+  updateSyncBadge('ok');
+}
+
+function updateSyncBadge(status){
+  const el = document.getElementById('syncBadge');
+  if(!el) return;
+  if(status==='ok')      { el.textContent='● Sync'; el.style.color='var(--green)'; }
+  if(status==='uploading'){ el.textContent='↑ Sync'; el.style.color='var(--amber)'; }
+  if(status==='error')   { el.textContent='✕ Sin red'; el.style.color='var(--red)'; }
+}
+
+function startAutoSync(){
+  if(syncInterval) clearInterval(syncInterval);
+  syncDown(); // sync inmediato al entrar
+  syncInterval = setInterval(syncDown, 15000); // cada 15 seg
+}
+
+
+
+const ESTADOS = ['planificado','enconstruccion','instalado','probado','falla'];
+const ELABEL  = {planificado:'Planificado',enconstruccion:'En construcción',instalado:'Instalado',probado:'Probado',falla:'Con falla'};
+const ECOLOR  = {planificado:'#6b7280',enconstruccion:'#f59e0b',instalado:'#3b82f6',probado:'#10b981',falla:'#ef4444'};
+
+// ══ STATE PERSISTENCE ══════════════════════════════════════════════
+function stateKey(){ return DATA ? 'ftth_state_'+(DATA.info.sitio||'X')+(DATA.info.pd||'') : null; }
+function loadState(){
+  const k = stateKey(); if(!k) return;
+  try{ const s=localStorage.getItem(k); if(s) STATE=JSON.parse(s); }catch(e){}
+}
+function saveState(){
+  const k = stateKey(); if(!k) return;
+  try{ localStorage.setItem(k, JSON.stringify(STATE)); }catch(e){}
+}
+function getS(id){ return STATE[id]||'planificado'; }
+function setS(id,s){ STATE[id]=s; saveState(); refresh(); syncUp(id,s); }
+function getBOM(code){ return STATE['bom_'+code]||0; }
+function setBOM(code,val){ STATE['bom_'+code]=val; saveState(); renderBOM(); renderAvance(); }
+
+// ══ RECENT WORKS ═══════════════════════════════════════════════════
+function saveRecent(info, naps, bom){
+  try{
+    const key = 'ftth_data_'+(info.sitio||'X')+(info.pd||'');
+    const meta = {key, name:`${info.sitio||'?'}-${info.pd||'?'} · ${info.proyecto||''}`, hhpp:info.hhpp, manzanas:info.manzanas, napsCount:naps.length, ts:Date.now()};
+    localStorage.setItem(key, JSON.stringify({info,naps,bom}));
+    let recents = JSON.parse(localStorage.getItem('ftth_recents')||'[]');
+    recents = recents.filter(r=>r.key!==key);
+    recents.unshift(meta);
+    recents = recents.slice(0,5);
+    localStorage.setItem('ftth_recents', JSON.stringify(recents));
+  }catch(e){}
+}
+function loadRecents(){
+  try{ return JSON.parse(localStorage.getItem('ftth_recents')||'[]'); }catch(e){ return []; }
+}
+function renderRecents(){
+  const list = loadRecents();
+  const section = document.getElementById('recentSection');
+  const el = document.getElementById('recentList');
+  if(!list.length){ section.style.display='none'; return; }
+  section.style.display='block';
+  el.innerHTML = list.map(r=>`
+    <div class="recent-item" onclick="loadFromStorage('${r.key}')">
+      <div class="recent-dot"></div>
+      <div style="flex:1">
+        <div class="recent-name">${r.name}</div>
+        <div class="recent-meta">${r.napsCount} NAPs · ${(r.hhpp||0).toLocaleString()} HHPP</div>
+      </div>
+      <span class="recent-del" onclick="event.stopPropagation();deleteRecent('${r.key}')">✕</span>
+    </div>`).join('');
+}
+function loadFromStorage(key){
+  try{
+    const d = JSON.parse(localStorage.getItem(key)||'null');
+    if(d){ DATA={info:d.info,naps:d.naps,bom:d.bom}; loadState(); showApp(); }
+  }catch(e){ toast('Error al cargar'); }
+}
+function deleteRecent(key){
+  try{
+    localStorage.removeItem(key);
+    let r=JSON.parse(localStorage.getItem('ftth_recents')||'[]');
+    r=r.filter(x=>x.key!==key);
+    localStorage.setItem('ftth_recents',JSON.stringify(r));
+    renderRecents();
+  }catch(e){}
+}
+
+// ══ FILE IMPORT ════════════════════════════════════════════════════
+document.getElementById('fileInput').addEventListener('change', e => {
+  if(e.target.files[0]) processFile(e.target.files[0]);
+});
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e=>{ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()=> dz.classList.remove('drag'));
+dz.addEventListener('drop', e=>{ e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
+
+function setProgress(pct, text){
+  document.getElementById('importProgress').style.display='block';
+  document.getElementById('progFill').style.width = pct+'%';
+  document.getElementById('progText').textContent = text;
+}
+
+function processFile(file){
+  setProgress(10,'Leyendo archivo...');
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      setProgress(30,'Procesando hojas...');
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      setProgress(50,'Leyendo TRONCAL...');
+      const parsed = parseADDRO(wb);
+      setProgress(70,'Verificando datos...');
+      if(!parsed.naps || parsed.naps.length===0) throw new Error('No se encontraron NAPs. Verificá que sea un ADDRO 7.x válido.');
+      setProgress(90,'Construyendo red...');
+      DATA = parsed;
+      saveRecent(DATA.info, DATA.naps, DATA.bom);
+      loadState();
+      setProgress(100,'✓ '+DATA.naps.length+' NAPs · '+Object.keys(DATA.trkMap||{}).length+' troncales');
+      setTimeout(()=>{ showApp(); }, 600);
+    }catch(err){
+      console.error(err);
+      document.getElementById('progText').textContent = '❌ '+err.message;
+      document.getElementById('progFill').style.background = 'var(--red)';
+      setProgress(100,'');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ══ ADDRO PARSER ════════════════════════════════════════════════
+// Estructura real del AdDRO 7.x
+// TRONCAL: col[1]=etiqueta, col[2]=valor, col[6]=FO, col[7]=nombre PC (rows 14-17)
+// PC-x: fila de troncal → col[11]=OUT-PC-N, col[10]=número (48/144/288), col[10] es numérico
+//        fila de NAP    → col[11]='NAP', col[10]=napId, col[3]=metros, col[13]=FO
+//        fila de CDO    → col[6]=cdoId (empieza con napId)
+// BOM: header en la fila donde col[1]='CODIGO SAP', datos desde la siguiente
+
+function parseADDRO(wb){
+  const info  = parseTRONCAL(wb);
+  const {naps, trkMap} = parseAllPCs(wb, info);
+  const bom   = parseBOM(wb);
+  return {info, naps, bom, trkMap};
+}
+
+function sheetRows(wb, name){
+  if(!wb.SheetNames.includes(name)) return null;
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, defval:null});
+}
+
+function parseTRONCAL(wb){
+  const rows = sheetRows(wb,'TRONCAL') || [];
+  const info = {};
+  const MAP  = {'PROY RELEV y DISEÑO':'proyecto','SITIO':'sitio','PD':'pd',
+                'MANZANAS':'manzanas','HHPP':'hhpp','ARQUITECTURA':'arquitectura',
+                'ESPLITEO':'espliteo','POLIGONO OBRA':'poligono','REGION':'region'};
+  for(const row of rows){
+    if(row[1] && MAP[row[1]]) info[MAP[row[1]]] = row[2];
+  }
+  // PCs: filas donde col[7] empieza con 'PC-' y col[6] es número (FO)
+  info.pcs = [];
+  for(const row of rows){
+    if(row[7] && String(row[7]).startsWith('PC-') && typeof row[6]==='number'){
+      info.pcs.push({id:String(row[7]), fo:row[6], metros:row[3]||0});
+    }
+  }
+  return info;
+}
+
+function parseAllPCs(wb, info){
+  const naps   = [];
+  const trkMap = {};
+  // Hojas PC-A, PC-B, PC-C, PC-D, PC-E
+  ['A','B','C','D','E'].forEach((suf, idx) => {
+    const sheetName = 'PC-'+suf;
+    if(!wb.SheetNames.includes(sheetName)) return;
+    const pcId = (info.pcs[idx] || {}).id || ('PC-?'+suf);
+    const rows = sheetRows(wb, sheetName);
+    parsePCSheet(rows, pcId, naps, trkMap);
+  });
+  return {naps, trkMap};
+}
+
+function parsePCSheet(rows, pcId, naps, trkMap){
+  // pcId ejemplo: 'PC-JULAA' → sufijo 'JULAA'
+  const pcSuf = pcId.replace('PC-','');
+  let currentTrk = null;
+
+  for(let i=0; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+
+    // ── Fila de troncal: col[11]=OUT-PC-N y col[10] es número (FO del cable)
+    if(typeof row[10]==='number' && row[11] && String(row[11]).startsWith('OUT-PC-')){
+      const trkNum = String(row[11]).replace('OUT-PC-','');
+      currentTrk = 'TR-' + pcSuf + trkNum;
+      if(!trkMap[currentTrk]){
+        trkMap[currentTrk] = {id:currentTrk, pc:pcId, fo:row[10], metros:0, naps:[]};
+      }
+      continue;
+    }
+
+    // ── Fila de NAP: col[11]==='NAP'
+    if(row[11]==='NAP' && row[10]){
+      const napId  = String(row[10]);
+      const metros = typeof row[3]==='number' ? row[3] : 0;
+      const fo     = typeof row[13]==='number' ? row[13] : 0;
+      const nap = { id:napId, pc:pcId,
+                    trk: currentTrk || ('TR-'+pcSuf+'1'),
+                    fo, metros, cdos:[] };
+      if(trkMap[nap.trk]){
+        trkMap[nap.trk].metros += metros;
+        trkMap[nap.trk].naps.push(napId);
+      }
+      // ── CDOs: buscar en filas siguientes hasta próxima NAP o troncal
+      for(let j=i+1; j<Math.min(i+200, rows.length); j++){
+        const r2 = rows[j];
+        if(!r2) continue;
+        // Parar en próxima NAP o troncal
+        if(r2[11]==='NAP') break;
+        if(typeof r2[10]==='number' && r2[11] && String(r2[11]).startsWith('OUT-PC-')) break;
+        // CDO: col[6] empieza con napId y es más largo
+        if(r2[6] && String(r2[6]).startsWith(napId) && String(r2[6]).length > napId.length){
+          const cdoId = String(r2[6]);
+          const rama  = cdoId.charAt(napId.length);
+          const pos   = parseInt(cdoId.charAt(napId.length+1)) || 1;
+          const tipo  = pos<=2 ? '70/30' : pos===3 ? '50/50' : 'TERM';
+          nap.cdos.push({id:cdoId, rama, pos, tipo,
+                         metros: typeof r2[3]==='number'?r2[3]:0,
+                         uso: r2[9]||''});
+        }
+      }
+      naps.push(nap);
+    }
+  }
+}
+
+function parseBOM(wb){
+  const rows = sheetRows(wb,'BOM');
+  if(!rows) return [];
+  const bom = [];
+  let headerIdx = -1;
+
+  // Encontrar fila de header: col[1]==='CODIGO SAP'
+  for(let i=0; i<rows.length; i++){
+    if(rows[i] && rows[i][1]==='CODIGO SAP'){ headerIdx=i; break; }
+  }
+  if(headerIdx<0) return [];
+
+  for(let i=headerIdx+1; i<rows.length; i++){
+    const row = rows[i];
+    if(!row || typeof row[1]!=='number') continue;
+    // Sumar columnas "Proyectado" (col 6, 8, 10... pares)
+    let proy = 0;
+    for(let k=6; k<Math.min(row.length,60); k+=2){
+      if(typeof row[k]==='number') proy += row[k];
+    }
+    bom.push({
+      codigo: String(Math.round(row[1])),
+      desc:   (String(row[2]||'')).slice(0,70),
+      unidad: row[3]||'UN',
+      tipo:   row[4]||'MAT',
+      proyectado: proy
+    });
+  }
+  return bom;
+}
+
+
+// ══ APP RENDER ════════════════════════════════════════════════════
+function showApp(){
+  document.getElementById('importScreen').style.display='none';
+  const app = document.getElementById('appScreen');
+  app.style.display='flex';
+  document.getElementById('appTitle').textContent =
+    '⬡ FTTH · '+(DATA.info.sitio||'?')+'-'+(DATA.info.pd||'?');
+  document.getElementById('appSub').textContent =
+    (DATA.info.proyecto||'')+(DATA.info.hhpp?' · '+(DATA.info.hhpp.toLocaleString())+' HHPP':'');
+  const ul = document.getElementById('userLabel');
+  if(ul) ul.textContent = currentUser ? '👤 '+currentUser : '';
+  buildFilters();
+  refresh();
+  startAutoSync();
+}
+
+function goBack(){
+  if(syncInterval){ clearInterval(syncInterval); syncInterval=null; }
+  document.getElementById('appScreen').style.display='none';
+  document.getElementById('importScreen').style.display='flex';
+  document.getElementById('importProgress').style.display='none';
+  renderRecents();
+}
+
+function refresh(){
+  renderMetrics();
+  renderNaps();
+  if(activeTab==='troncales') renderTroncales();
+  if(activeTab==='avance') renderAvance();
+  if(activeTab==='bom') renderBOM();
+}
+
+// ══ PONDERACIÓN: troncal=5pts, NAP=1pt, CDO=1pt ══════════════════
+// Estado "instalado" o "probado" = punto completo
+// Estado "enconstruccion" = 0.5 punto
+// "spliceado" se mapea en NAP estado instalado (el splice ES la instalación)
+const PESO = { troncal:5, nap:1, cdo:1 };
+
+function calcPuntos(){
+  if(!DATA) return {ptsTot:0,ptsDone:0,ptsEnObra:0};
+  const trks = DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+  let ptsTot=0, ptsDone=0, ptsEnObra=0;
+
+  trks.forEach(t=>{
+    ptsTot += PESO.troncal;
+    const s=getS(t.id);
+    if(s==='instalado'||s==='probado') ptsDone+=PESO.troncal;
+    else if(s==='enconstruccion') ptsEnObra+=PESO.troncal;
+  });
+
+  DATA.naps.forEach(n=>{
+    ptsTot += PESO.nap;
+    const s=getS(n.id);
+    if(s==='instalado'||s==='probado') ptsDone+=PESO.nap;
+    else if(s==='enconstruccion') ptsEnObra+=PESO.nap;
+
+    n.cdos.forEach(c=>{
+      ptsTot += PESO.cdo;
+      const cs=getS(c.id);
+      if(cs==='instalado'||cs==='probado') ptsDone+=PESO.cdo;
+      else if(cs==='enconstruccion') ptsEnObra+=PESO.cdo;
+    });
+  });
+  return {ptsTot, ptsDone, ptsEnObra};
+}
+
+function calcEtapa(items, key){
+  // items: array de {id}
+  let tot=items.length, done=0, enObra=0, prob=0, falla=0;
+  items.forEach(x=>{
+    const s=getS(x.id);
+    if(s==='probado') { done++; prob++; }
+    else if(s==='instalado') done++;
+    else if(s==='enconstruccion') enObra++;
+    else if(s==='falla') falla++;
+  });
+  return {tot, done, enObra, prob, falla, pct: tot?Math.round(done/tot*100):0};
+}
+
+function renderMetrics(){
+  if(!DATA) return;
+  const {ptsTot, ptsDone, ptsEnObra} = calcPuntos();
+  const pct = ptsTot ? Math.round(ptsDone/ptsTot*100) : 0;
+  const pctEnObra = ptsTot ? Math.round((ptsDone+ptsEnObra)/ptsTot*100) : 0;
+  document.getElementById('appPct').textContent = pct+'%';
+
+  const trks = DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+  const trkDone = trks.filter(t=>['instalado','probado'].includes(getS(t.id))).length;
+  const napDone = DATA.naps.filter(n=>['instalado','probado'].includes(getS(n.id))).length;
+  const allCdos = DATA.naps.flatMap(n=>n.cdos);
+  const cdoDone = allCdos.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+
+  document.getElementById('metricsStrip').innerHTML=`
+    <div class="metric">
+      <div class="metric-val" style="color:${pct>=80?'var(--green)':pct>=40?'var(--amber)':'var(--accent)'}">${pct}%</div>
+      <div class="metric-lbl">Avance</div>
+      <div class="metric-bar">
+        <div class="metric-fill" style="width:${pctEnObra}%;background:var(--amber);opacity:.4"></div>
+        <div class="metric-fill" style="width:${pct}%;background:${pct>=80?'var(--green)':pct>=40?'var(--amber)':'var(--accent)'};margin-top:-2px"></div>
+      </div>
+    </div>
+    <div class="metric"><div class="metric-val" style="color:var(--accent)">${trkDone}/${trks.length}</div><div class="metric-lbl">Troncales</div></div>
+    <div class="metric"><div class="metric-val" style="color:var(--green)">${napDone}/${DATA.naps.length}</div><div class="metric-lbl">NAPs</div></div>
+    <div class="metric"><div class="metric-val" style="color:var(--purple)">${cdoDone}/${allCdos.length}</div><div class="metric-lbl">CDOs</div></div>
+    <div class="metric"><div class="metric-val">${ptsDone}<span style="font-size:11px;color:var(--text3)">/${ptsTot}</span></div><div class="metric-lbl">Puntos</div></div>
+  `;
+}
+
+// ── Filters ──────────────────────────────────────────────────────
+function buildFilters(){
+  const bar = document.getElementById('filterBar');
+  const pcs = [...new Set(DATA.naps.map(n=>n.pc))];
+  const trks = [...new Set(DATA.naps.map(n=>n.trk))];
+  const chips = [
+    {v:'ALL', l:'Todas'},
+    ...pcs.map(p=>({v:p, l:p.replace('PC-','')})),
+    ...ESTADOS.map(s=>({v:s, l:ELABEL[s].split(' ')[0]}))
+  ];
+  bar.innerHTML = chips.map(c=>`<span class="chip ${c.v==='ALL'?'active':''}" data-v="${c.v}" onclick="setFilter(this)">${c.l}</span>`).join('');
+}
+function setFilter(el){
+  document.querySelectorAll('#filterBar .chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  activeFilter=el.dataset.v;
+  document.getElementById('searchInput').value='';
+  renderNaps();
+}
+
+// ── NAP List ─────────────────────────────────────────────────────
+function renderNaps(){
+  if(!DATA) return;
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  const filtered = DATA.naps.filter(n=>{
+    const s=getS(n.id);
+    if(activeFilter==='ALL') return !q||n.id.toLowerCase().includes(q);
+    if(activeFilter===n.pc||activeFilter===n.trk||activeFilter===s) return !q||n.id.toLowerCase().includes(q);
+    return false;
+  });
+  const list=document.getElementById('napList');
+  if(!filtered.length){list.innerHTML='<div style="text-align:center;padding:2rem;color:var(--text3);font-family:var(--font-mono);font-size:12px">Sin resultados</div>';return;}
+  list.innerHTML=filtered.map(n=>{
+    const s=getS(n.id);
+    const isOpen=expandedId===n.id;
+    const cdoDone=n.cdos.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+    return `<div class="card s-${s} ${isOpen?'open':''}" onclick="toggleExpand('${n.id}')">
+      <div class="card-top">
+        <div class="card-dot"></div>
+        <div style="flex:1">
+          <div class="card-name">${n.id}</div>
+          <div class="card-trk">${n.trk||''}</div>
+        </div>
+        <div class="status-pill s-${s}">${ELABEL[s]}</div>
+      </div>
+      <div class="card-meta">
+        <span>${n.fo||0} FO</span>
+        <span>${n.metros||0} m</span>
+        <span>CDOs: ${cdoDone}/${n.cdos.length}</span>
+      </div>
+      ${isOpen?`<div class="card-body">
+        <div class="section-label">Estado NAP</div>
+        <div class="status-grid">
+          ${ESTADOS.map(st=>`<button class="status-btn s-${st} ${s===st?'active':''}"
+            onclick="event.stopPropagation();setS('${n.id}','${st}')">${ELABEL[st]}</button>`).join('')}
+        </div>
+        <div class="section-label">CDOs (${n.cdos.length}) — toca para ciclar</div>
+        <div class="cdo-grid">
+          ${n.cdos.map(c=>`<div class="cdo-cell s-${getS(c.id)}" onclick="event.stopPropagation();cycleCDO('${c.id}')">
+            <div>${c.rama}${c.pos}</div>
+            <div class="cdo-type">${c.tipo}</div>
+          </div>`).join('')}
+        </div>
+        <div class="cdo-prog">${cdoDone}/${n.cdos.length} CDOs listos</div>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function toggleExpand(id){ expandedId=expandedId===id?null:id; renderNaps(); }
+function cycleCDO(id){
+  const cur=ESTADOS.indexOf(getS(id));
+  const next=ESTADOS[(cur+1)%ESTADOS.length];
+  setS(id,next);
+  toast(id+' → '+ELABEL[next]);
+}
+
+// ── Troncales ────────────────────────────────────────────────────
+function renderTroncales(){
+  if(!DATA) return;
+  const trks = DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+  const el = document.getElementById('trkList');
+  const trkColors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+  el.innerHTML = trks.map((trk,idx)=>{
+    const s=getS(trk.id);
+    const color=trkColors[idx%trkColors.length];
+    const napsDone=trk.naps.filter(nid=>['instalado','probado'].includes(getS(nid))).length;
+    return `<div class="trk-card s-${s}">
+      <div class="trk-head">
+        <div class="trk-bar" style="background:${color}"></div>
+        <div style="flex:1">
+          <div class="trk-name">${trk.id}</div>
+          <div class="trk-desc">${trk.fo||'?'} FO · ${trk.metros||0} m acum.</div>
+        </div>
+        <select class="trk-status-sel" onchange="setS('${trk.id}',this.value)">
+          ${ESTADOS.map(st=>`<option value="${st}" ${s===st?'selected':''}>${ELABEL[st]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="trk-stats">
+        <span>${trk.naps.length} NAPs</span>
+        <span style="color:var(--green)">${napsDone} instaladas</span>
+        <span style="color:var(--gray)">${trk.naps.length-napsDone} pendientes</span>
+      </div>
+      <div class="trk-nap-chips">
+        ${trk.naps.map(nid=>{
+          const ns=getS(nid);
+          return `<span class="nap-chip" style="border-color:${ECOLOR[ns]};color:${ECOLOR[ns]}">${nid}</span>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function buildTrkMap(){
+  const map={};
+  DATA.naps.forEach(n=>{
+    if(!map[n.trk]) map[n.trk]={id:n.trk,pc:n.pc,fo:288,metros:0,naps:[]};
+    map[n.trk].metros+=n.metros||0;
+    map[n.trk].naps.push(n.id);
+  });
+  return Object.values(map);
+}
+
+// ── BOM ──────────────────────────────────────────────────────────
+function renderBOM(){
+  if(!DATA||!DATA.bom) return;
+  const mat=DATA.bom.filter(b=>b.tipo==='MAT'||!b.tipo);
+  const mot=DATA.bom.filter(b=>b.tipo==='MOT');
+  let html='';
+  if(mat.length){
+    html+=`<div class="bom-group">Materiales</div>`;
+    html+=mat.map(b=>bomRow(b)).join('');
+  }
+  if(mot.length){
+    html+=`<div class="bom-group">Mano de obra</div>`;
+    html+=mot.map(b=>bomRow(b)).join('');
+  }
+  document.getElementById('bomRows').innerHTML=html;
+}
+function bomRow(b){
+  const inst=getBOM(b.codigo);
+  const pct=b.proyectado>0?Math.min(100,Math.round(inst/b.proyectado*100)):0;
+  return `<div>
+    <div class="bom-row">
+      <span class="bom-code">${b.codigo}</span>
+      <span class="bom-desc" title="${b.desc}">${b.desc}</span>
+      <span class="bom-proy">${b.proyectado||0}<span style="font-size:8px;color:var(--text3)"> ${b.unidad}</span></span>
+      <input class="bom-input" type="number" min="0" value="${inst}"
+        onchange="setBOM('${b.codigo}',+this.value)" onclick="this.select()">
+    </div>
+    <div class="bom-progress"><div class="bom-pfill" style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--accent)'}"></div></div>
+  </div>`;
+}
+
+// ── Avance ponderado: troncal=5pts, NAP=1pt, CDO=1pt ─────────────
+function pctColor(p){ return p>=80?'var(--green)':p>=50?'var(--accent)':p>=25?'var(--amber)':'var(--gray)'; }
+function miniBar(pct, color, pctEO){
+  return `<div class="avance-bar" style="position:relative;height:6px;border-radius:3px;background:var(--bg3)">
+    <div style="position:absolute;top:0;left:0;height:100%;width:${pctEO||pct}%;background:${color};opacity:.25;border-radius:3px"></div>
+    <div style="position:absolute;top:0;left:0;height:100%;width:${pct}%;background:${color};border-radius:3px;transition:width .5s"></div>
+  </div>`;
+}
+function etapaRow(label, done, enObra, prob, falla, tot, ptsDone, ptsTot){
+  const pct = tot ? Math.round(done/tot*100) : 0;
+  const pctEO = tot ? Math.round((done+enObra)/tot*100) : 0;
+  const color = pctColor(pct);
+  return `<div style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+      <span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text)">${label}</span>
+      <span style="font-family:var(--font-mono);font-size:13px;color:${color};font-weight:600">${pct}%</span>
+    </div>
+    ${miniBar(pct, color, pctEO)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;font-family:var(--font-mono);font-size:9px;margin-top:5px">
+      <span style="color:var(--green)">✓ ${done} listos</span>
+      ${enObra?`<span style="color:var(--amber)">⟳ ${enObra} en obra</span>`:''}
+      ${prob?`<span style="color:var(--purple)">✦ ${prob} probados</span>`:''}
+      ${falla?`<span style="color:var(--red)">✕ ${falla} fallas</span>`:''}
+      <span style="color:var(--text3)">${done}/${tot} · ${ptsDone}/${ptsTot} pts</span>
+    </div>
+  </div>`;
+}
+function calcEtapa(items){
+  let tot=items.length,done=0,enObra=0,prob=0,falla=0;
+  items.forEach(x=>{
+    const s=getS(x.id);
+    if(s==='probado'){done++;prob++;}
+    else if(s==='instalado') done++;
+    else if(s==='enconstruccion') enObra++;
+    else if(s==='falla') falla++;
+  });
+  return {tot,done,enObra,prob,falla};
+}
+function calcPuntos(){
+  if(!DATA) return {ptsTot:0,ptsDone:0,ptsEnObra:0};
+  const trks=DATA.trkMap?Object.values(DATA.trkMap):buildTrkMap();
+  let ptsTot=0,ptsDone=0,ptsEnObra=0;
+  trks.forEach(t=>{
+    ptsTot+=PESO.troncal;
+    const s=getS(t.id);
+    if(s==='instalado'||s==='probado') ptsDone+=PESO.troncal;
+    else if(s==='enconstruccion') ptsEnObra+=PESO.troncal;
+  });
+  DATA.naps.forEach(n=>{
+    ptsTot+=PESO.nap;
+    const s=getS(n.id);
+    if(s==='instalado'||s==='probado') ptsDone+=PESO.nap;
+    else if(s==='enconstruccion') ptsEnObra+=PESO.nap;
+    n.cdos.forEach(c=>{
+      ptsTot+=PESO.cdo;
+      const cs=getS(c.id);
+      if(cs==='instalado'||cs==='probado') ptsDone+=PESO.cdo;
+      else if(cs==='enconstruccion') ptsEnObra+=PESO.cdo;
+    });
+  });
+  return {ptsTot,ptsDone,ptsEnObra};
+}
+function renderAvance(){
+  if(!DATA) return;
+  const trks = DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+  const allCdos = DATA.naps.flatMap(n=>n.cdos);
+  const pcs = [...new Set(DATA.naps.map(n=>n.pc))];
+  const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6'];
+
+  // ── TOTALES GLOBALES (todas las etapas sumadas) ──────────────
+  // Items totales de la obra = troncales + NAPs + CDOs (con ponderación)
+  const trkTot  = trks.length;
+  const napTot  = DATA.naps.length;
+  const cdoTot  = allCdos.length;
+
+  // Conteos por estado para cada tipo
+  function contarEstados(items) {
+    let inst=0, prob=0, enObra=0, falla=0, plan=0;
+    items.forEach(x => {
+      const s = getS(x.id);
+      if      (s==='probado')        prob++;
+      else if (s==='instalado')      inst++;
+      else if (s==='enconstruccion') enObra++;
+      else if (s==='falla')          falla++;
+      else                           plan++;
+    });
+    return {inst, prob, enObra, falla, plan, done: inst+prob};
+  }
+
+  const trkC = contarEstados(trks.map(t=>({id:t.id})));
+  const napC = contarEstados(DATA.naps);
+  const cdoC = contarEstados(allCdos);
+
+  // Puntos ponderados totales
+  const ptsTot  = trkTot*PESO.troncal + napTot*PESO.nap + cdoTot*PESO.cdo;
+  const ptsDone = trkC.done*PESO.troncal + napC.done*PESO.nap + cdoC.done*PESO.cdo;
+  const ptsInst = trkC.inst*PESO.troncal + napC.inst*PESO.nap + cdoC.inst*PESO.cdo;
+  const ptsProb = trkC.prob*PESO.troncal + napC.prob*PESO.nap + cdoC.prob*PESO.cdo;
+  const ptsEO   = trkC.enObra*PESO.troncal + napC.enObra*PESO.nap + cdoC.enObra*PESO.cdo;
+
+  const itemsTot  = trkTot + napTot + cdoTot;
+  const itemsDone = trkC.done + napC.done + cdoC.done;
+  const itemsInst = trkC.inst + napC.inst + cdoC.inst;
+  const itemsProb = trkC.prob + napC.prob + cdoC.prob;
+  const itemsEO   = trkC.enObra + napC.enObra + cdoC.enObra;
+  const itemsFalla= trkC.falla + napC.falla + cdoC.falla;
+
+  const pctGlobal = ptsTot ? Math.round(ptsDone/ptsTot*100) : 0;
+  const pctInst   = ptsTot ? Math.round(ptsInst/ptsTot*100) : 0;
+  const pctProb   = ptsTot ? Math.round(ptsProb/ptsTot*100) : 0;
+  const pctEO     = ptsTot ? Math.round(ptsEO/ptsTot*100)   : 0;
+  const colorG    = pctColor(pctGlobal);
+  let html = '';
+
+  // ── CARD PRINCIPAL: avance total de la obra ──────────────────
+  html += `<div class="avance-card" style="border-color:${colorG};border-width:1.5px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.05em">Avance total de obra</div>
+        <div style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--text);margin-top:2px">${DATA.info.sitio||''}-${DATA.info.pd||''}</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text3);margin-top:1px">${(DATA.info.hhpp||0).toLocaleString()} HHPP · ${itemsTot} ítems totales</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:var(--font-mono);font-size:36px;font-weight:600;color:${colorG};line-height:1">${pctGlobal}%</div>
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text3);margin-top:2px">${ptsDone}/${ptsTot} pts</div>
+      </div>
+    </div>
+
+    <!-- Barra de progreso apilada: probado + instalado + en obra -->
+    <div style="height:10px;border-radius:5px;background:var(--bg3);overflow:hidden;display:flex;margin-bottom:10px">
+      <div style="height:100%;width:${pctProb}%;background:var(--purple);transition:width .5s"></div>
+      <div style="height:100%;width:${pctInst}%;background:var(--green);transition:width .5s"></div>
+      <div style="height:100%;width:${pctEO}%;background:var(--amber);opacity:.6;transition:width .5s"></div>
+    </div>
+
+    <!-- Leyenda de la barra -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;font-family:var(--font-mono);font-size:10px;margin-bottom:12px">
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--purple);margin-right:4px;vertical-align:middle"></span>Probado ${pctProb}%</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--green);margin-right:4px;vertical-align:middle"></span>Instalado ${pctInst}%</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--amber);opacity:.7;margin-right:4px;vertical-align:middle"></span>En obra ${pctEO}%</span>
+    </div>
+
+    <!-- Tabla de conteos por etapa -->
+    <div style="background:var(--bg3);border-radius:var(--r);overflow:hidden">
+      <div style="display:grid;grid-template-columns:1fr 40px 40px 40px 40px 40px;gap:0;font-family:var(--font-mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;padding:6px 10px;border-bottom:1px solid var(--border)">
+        <span>Etapa</span><span style="text-align:right">Total</span><span style="text-align:right;color:var(--purple)">Prob.</span><span style="text-align:right;color:var(--green)">Inst.</span><span style="text-align:right;color:var(--amber)">Obra</span><span style="text-align:right;color:var(--red)">Falla</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 40px 40px 40px 40px 40px;gap:0;padding:7px 10px;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:11px;align-items:center">
+        <span style="color:var(--accent)">Troncal</span>
+        <span style="text-align:right;font-weight:600">${trkTot}</span>
+        <span style="text-align:right;color:var(--purple)">${trkC.prob}</span>
+        <span style="text-align:right;color:var(--green)">${trkC.inst}</span>
+        <span style="text-align:right;color:var(--amber)">${trkC.enObra}</span>
+        <span style="text-align:right;color:${trkC.falla?'var(--red)':'var(--text3)'}">${trkC.falla}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 40px 40px 40px 40px 40px;gap:0;padding:7px 10px;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:11px;align-items:center">
+        <span style="color:var(--green)">NAPs</span>
+        <span style="text-align:right;font-weight:600">${napTot}</span>
+        <span style="text-align:right;color:var(--purple)">${napC.prob}</span>
+        <span style="text-align:right;color:var(--green)">${napC.inst}</span>
+        <span style="text-align:right;color:var(--amber)">${napC.enObra}</span>
+        <span style="text-align:right;color:${napC.falla?'var(--red)':'var(--text3)'}">${napC.falla}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 40px 40px 40px 40px 40px;gap:0;padding:7px 10px;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:11px;align-items:center">
+        <span style="color:var(--purple)">CDOs</span>
+        <span style="text-align:right;font-weight:600">${cdoTot}</span>
+        <span style="text-align:right;color:var(--purple)">${cdoC.prob}</span>
+        <span style="text-align:right;color:var(--green)">${cdoC.inst}</span>
+        <span style="text-align:right;color:var(--amber)">${cdoC.enObra}</span>
+        <span style="text-align:right;color:${cdoC.falla?'var(--red)':'var(--text3)'}">${cdoC.falla}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 40px 40px 40px 40px 40px;gap:0;padding:7px 10px;font-family:var(--font-mono);font-size:11px;font-weight:600;align-items:center;background:var(--bg4)">
+        <span>TOTAL</span>
+        <span style="text-align:right">${itemsTot}</span>
+        <span style="text-align:right;color:var(--purple)">${itemsProb}</span>
+        <span style="text-align:right;color:var(--green)">${itemsInst}</span>
+        <span style="text-align:right;color:var(--amber)">${itemsEO}</span>
+        <span style="text-align:right;color:${itemsFalla?'var(--red)':'var(--text3)'}">${itemsFalla}</span>
+      </div>
+    </div>
+  </div>`;
+
+  // ── AVANCE POR PC ────────────────────────────────────────────
+  html += `<div class="avance-card">
+    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Avance por PC</div>`;
+
+  pcs.forEach((pc, i) => {
+    const napsPc = DATA.naps.filter(n=>n.pc===pc);
+    const trksPc = trks.filter(t=>t.pc===pc);
+    const cdosPc = napsPc.flatMap(n=>n.cdos);
+    const tC = contarEstados(trksPc.map(t=>({id:t.id})));
+    const nC = contarEstados(napsPc);
+    const cC = contarEstados(cdosPc);
+    const ptsTotPc  = trksPc.length*PESO.troncal + napsPc.length*PESO.nap + cdosPc.length*PESO.cdo;
+    const ptsDonePc = tC.done*PESO.troncal + nC.done*PESO.nap + cC.done*PESO.cdo;
+    const ptsEoPc   = tC.enObra*PESO.troncal + nC.enObra*PESO.nap + cC.enObra*PESO.cdo;
+    const ptsInstPc = tC.inst*PESO.troncal + nC.inst*PESO.nap + cC.inst*PESO.cdo;
+    const ptsProbPc = tC.prob*PESO.troncal + nC.prob*PESO.nap + cC.prob*PESO.cdo;
+    const pctPc     = ptsTotPc ? Math.round(ptsDonePc/ptsTotPc*100) : 0;
+    const pctIPc    = ptsTotPc ? Math.round(ptsInstPc/ptsTotPc*100) : 0;
+    const pctPPc    = ptsTotPc ? Math.round(ptsProbPc/ptsTotPc*100) : 0;
+    const pctEoPc   = ptsTotPc ? Math.round(ptsEoPc/ptsTotPc*100)   : 0;
+    const col = colors[i%colors.length];
+
+    html += `<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:${col}">${pc}</span>
+        <span style="font-family:var(--font-mono);font-size:16px;font-weight:600;color:${col}">${pctPc}%</span>
+      </div>
+      <div style="height:8px;border-radius:4px;background:var(--bg3);overflow:hidden;display:flex;margin-bottom:8px">
+        <div style="height:100%;width:${pctPPc}%;background:var(--purple);transition:width .5s"></div>
+        <div style="height:100%;width:${pctIPc}%;background:${col};transition:width .5s"></div>
+        <div style="height:100%;width:${pctEoPc}%;background:var(--amber);opacity:.5;transition:width .5s"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px">
+        <div style="background:var(--bg3);border-radius:6px;padding:6px;text-align:center">
+          <div style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--accent)">${tC.done}/${trksPc.length}</div>
+          <div style="font-family:var(--font-mono);font-size:8px;color:var(--text3)">TRONCAL</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:6px;text-align:center">
+          <div style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--green)">${nC.done}/${napsPc.length}</div>
+          <div style="font-family:var(--font-mono);font-size:8px;color:var(--text3)">NAPs</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:6px;text-align:center">
+          <div style="font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--purple)">${cC.done}/${cdosPc.length}</div>
+          <div style="font-family:var(--font-mono);font-size:8px;color:var(--text3)">CDOs</div>
+        </div>
+      </div>
+      <div style="font-family:var(--font-mono);font-size:9px;color:var(--text3);margin-top:4px">${ptsDonePc}/${ptsTotPc} pts ponderados</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  document.getElementById('avanceWrap').innerHTML = html;
+}
+
+// ── Tab switch ────────────────────────────────────────────────────
+function switchTab(tab,el){
+  activeTab=tab;
+  document.querySelectorAll('.navtab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+tab).classList.add('active');
+  if(tab==='troncales') renderTroncales();
+  if(tab==='bom') renderBOM();
+  if(tab==='avance') renderAvance();
+}
+
+// ── Export / Share ────────────────────────────────────────────────
+function exportCSV(){
+  if(!DATA) return;
+  const rows=['NAP,PC,Troncal,FO,Metros,Estado,CDOs_total,CDOs_listos'];
+  DATA.naps.forEach(n=>{
+    const cdoDone=n.cdos.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+    rows.push(`${n.id},${n.pc},${n.trk},${n.fo},${n.metros},${ELABEL[getS(n.id)]},${n.cdos.length},${cdoDone}`);
+  });
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`avance_${DATA.info.sitio||'obra'}_${DATA.info.pd||''}.csv`;a.click();
+  toast('CSV exportado ✓');
+}
+
+function resetWork(){
+  if(!confirm('¿Borrar todos los estados de esta obra?')) return;
+  const k=stateKey(); if(k) localStorage.removeItem(k);
+  STATE={};
+  refresh();
+  toast('Estados reseteados');
+}
+
+function shareProgress(){
+  if(!DATA) return;
+  const naps=DATA.naps;
+  const done=naps.filter(n=>['instalado','probado'].includes(getS(n.id))).length;
+  const pct=Math.round(done/naps.length*100);
+  const msg=`📡 FTTH ${DATA.info.sitio||''}-${DATA.info.pd||''} · Avance ${pct}%\n${done}/${naps.length} NAPs instaladas\n${DATA.info.proyecto||''}\n${(DATA.info.hhpp||0).toLocaleString()} HHPP`;
+  if(navigator.share){ navigator.share({title:'FTTH Avance',text:msg}); }
+  else{ navigator.clipboard?.writeText(msg).then(()=>toast('Copiado ✓')); }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),2200);
+}
+
+// ══ INIT ══════════════════════════════════════════════════════════
+
+function loginUser(){
+  const name = document.getElementById('userInput').value.trim();
+  if(!name){ document.getElementById('userInput').style.borderColor='var(--red)'; return; }
+  currentUser = name;
+  try{ localStorage.setItem('ftth_user', name); }catch(e){}
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('importScreen').style.display = 'flex';
+  renderRecents();
+  // Si ya hay una obra guardada, ir directo
+  const recents = loadRecents();
+  if(recents.length > 0){
+    loadFromStorage(recents[0].key);
+  }
+}
+
+function checkSavedUser(){
+  try{
+    const saved = localStorage.getItem('ftth_user');
+    if(saved){ currentUser=saved; return true; }
+  }catch(e){}
+  return false;
+}
+
+// Ver si ya hay usuario guardado
+if(checkSavedUser()){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('importScreen').style.display = 'flex';
+  renderRecents();
+  const recents = loadRecents();
+  if(recents.length > 0) loadFromStorage(recents[0].key);
+} else {
+  // Mostrar login
+  document.getElementById('importScreen').style.display = 'none';
+}
+</script>
+</body>
+</html>
