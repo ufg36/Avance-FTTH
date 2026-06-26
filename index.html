@@ -249,6 +249,24 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--t
 <body>
 
 
+
+<!-- ══ PASSWORD SCREEN ══════════════════════════════════════════ -->
+<div id="passwordScreen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;height:100dvh;padding:2rem;text-align:center;gap:1.2rem;background:var(--bg)">
+  <div style="font-size:40px">🔒</div>
+  <div style="font-family:var(--font-mono);font-size:16px;font-weight:600;color:var(--text)">FTTH · Acceso restringido</div>
+  <div style="font-size:12px;color:var(--text2);max-width:260px;line-height:1.6">Ingresá la clave de acceso para continuar</div>
+  <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:10px">
+    <input id="passInput" type="password" placeholder="Clave de acceso"
+      style="width:100%;padding:13px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);color:var(--text);font-family:var(--font-mono);font-size:15px;outline:none;text-align:center;letter-spacing:.2em"
+      onkeydown="if(event.key==='Enter') checkPassword()">
+    <button onclick="checkPassword()"
+      style="width:100%;padding:13px;background:var(--accent);border:none;border-radius:var(--r);color:white;font-family:var(--font-mono);font-size:14px;font-weight:600;cursor:pointer">
+      Entrar →
+    </button>
+    <div id="passError" style="font-family:var(--font-mono);font-size:11px;color:var(--red);display:none">Clave incorrecta</div>
+  </div>
+</div>
+
 <!-- ══ LOGIN SCREEN ══════════════════════════════════════════════ -->
 <div id="loginScreen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;height:100dvh;padding:2rem;text-align:center;gap:1.2rem;background:var(--bg)">
   <div style="font-size:40px">⬡</div>
@@ -372,6 +390,43 @@ let STATE = {};         // Estados guardados
 let activeFilter = 'ALL';
 let expandedId = null;
 let activeTab = 'red';
+
+
+// ══ CONTROL DE ACCESO ════════════════════════════════════════════
+const APP_PASS = 'Obrascentro';   // ← cambiá esta clave cuando quieras
+
+function checkPassword(){
+  const val = document.getElementById('passInput').value;
+  if(val === APP_PASS){
+    try{ localStorage.setItem('ftth_auth', btoa(APP_PASS)); }catch(e){}
+    document.getElementById('passwordScreen').style.display = 'none';
+    showLoginOrApp();
+  } else {
+    const err = document.getElementById('passError');
+    err.style.display = 'block';
+    document.getElementById('passInput').value = '';
+    document.getElementById('passInput').style.borderColor = 'var(--red)';
+    setTimeout(()=>{ err.style.display='none'; document.getElementById('passInput').style.borderColor=''; }, 2000);
+  }
+}
+
+function checkAuth(){
+  try{
+    const saved = localStorage.getItem('ftth_auth');
+    return saved && atob(saved) === APP_PASS;
+  }catch(e){ return false; }
+}
+
+function showLoginOrApp(){
+  if(checkSavedUser()){
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('importScreen').style.display = 'none';
+    loadState();
+    showApp();
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+  }
+}
 
 // ══ GOOGLE SHEETS SYNC ═══════════════════════════════════════════
 const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyZK3dx6v9-tYbPwzpyGWX8LoDaMY3GEDJBAytFFZBXBCUWKZE8TGIb2fKH8SbG_3QWtw/exec';
@@ -1255,7 +1310,6 @@ function loginUser(){
   currentUser = name;
   try{ localStorage.setItem('ftth_user', name); }catch(e){}
   document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('importScreen').style.display = 'none';
   loadState();
   showApp();
 }
@@ -1271,14 +1325,14 @@ function checkSavedUser(){
 // Cargar datos embebidos del ADDRO
 DATA = ADDRO_DATA;
 
-// Ver si ya hay usuario guardado
-if(checkSavedUser()){
+// Verificar acceso
+if(checkAuth()){
+  document.getElementById('passwordScreen').style.display = 'none';
+  showLoginOrApp();
+} else {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('importScreen').style.display = 'none';
-  loadState();
-  showApp();
-} else {
-  document.getElementById('importScreen').style.display = 'none';
+  // passwordScreen ya está visible
 }
 </script>
 </body>
