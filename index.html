@@ -917,20 +917,43 @@ function renderNaps(){
           ${ESTADOS.map(st=>`<button class="status-btn s-${st} ${s===st?'active':''}"
             onclick="event.stopPropagation();setS('${n.id}','${st}')">${ELABEL[st]}</button>`).join('')}
         </div>
-        <div class="section-label">CDOs (${n.cdos.length}) — toca para ciclar</div>
+        <div class="section-label" style="margin-bottom:8px">CDOs — ${cdoDone}/${n.cdos.length} listos</div>
+
+        <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:10px;margin-bottom:10px">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text2);margin-bottom:8px;font-weight:600">⚡ Pasar TODOS los CDOs a:</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+            ${ESTADOS.map(st=>`
+            <button onclick="event.stopPropagation();setAllCDOs('${n.id}','${st}')"
+              style="padding:9px 6px;border-radius:8px;border:1.5px solid ${ECOLOR[st]};
+                background:transparent;color:${ECOLOR[st]};font-family:var(--font-mono);
+                font-size:11px;font-weight:600;cursor:pointer;text-align:center">
+              ${ELABEL[st]}
+            </button>`).join('')}
+          </div>
+        </div>
+
         <div class="cdo-grid">
           ${n.cdos.map(c=>`<div class="cdo-cell s-${getS(c.id)}" onclick="event.stopPropagation();cycleCDO('${c.id}')">
             <div>${c.rama}${c.pos}</div>
             <div class="cdo-type">${c.tipo}</div>
           </div>`).join('')}
         </div>
-        <div class="cdo-prog">${cdoDone}/${n.cdos.length} CDOs listos</div>
       </div>`:''}
     </div>`;
   }).join('');
 }
 
 function toggleExpand(id){ expandedId=expandedId===id?null:id; renderNaps(); }
+function setAllCDOs(napId, estado){
+  const nap = DATA.naps.find(n=>n.id===napId);
+  if(!nap) return;
+  nap.cdos.forEach(c=>{ STATE[c.id]=estado; });
+  saveState();
+  nap.cdos.forEach(c=>syncUp(c.id, estado));
+  refresh();
+  toast(napId+': '+nap.cdos.length+' CDOs → '+ELABEL[estado]);
+}
+
 function cycleCDO(id){
   const cur=ESTADOS.indexOf(getS(id));
   const next=ESTADOS[(cur+1)%ESTADOS.length];
