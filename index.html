@@ -1355,107 +1355,158 @@ function switchTab(tab,el){
 function exportXLS(){
   if(!DATA) return;
   toast('Generando Excel...');
-  const wb = XLSX.utils.book_new();
-  const DONE = s => ['instalado','probado'].includes(s) ? 'XXXXX' : '';
+  const DONE    = s => ['instalado','probado'].includes(s);
   const allTrks = DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
-  const sitio = DATA.info.sitio || '';
+  const sitio   = DATA.info.sitio || '';
 
-  // ── Detectar troncales principales (ej: A, B, C, D)
-  // PC-CMUAA → troncal principal = A (tercer char del sufijo)
-  // Sufijo = pc.replace('PC-','').replace(sitio,'') → ej 'AA','AB','AC','CA'...
-  function pcSuffix(pc){ return pc.replace('PC-','').replace(sitio,''); }  // ej 'AA','AB','CA'
-  function troncoLetra(pc){ return pcSuffix(pc).charAt(0); }               // ej 'A','C','D'
+  function pcSuffix(pc){ return pc.replace('PC-','').replace(sitio,''); }
+  function troncoLetra(pc){ return pcSuffix(pc).charAt(0); }
 
-  const pcs = [...new Set(DATA.naps.map(n=>n.pc))];
-  const troncos = [...new Set(pcs.map(troncoLetra))].sort();               // ['A','C','D']
+  const pcs    = [...new Set(DATA.naps.map(n=>n.pc))];
+  const troncos= [...new Set(pcs.map(troncoLetra))].sort();
 
-  // ── Hoja Consolidado ──
-  const consRows = [
-    ['Avance FTTH ' + (DATA.info.proyecto||sitio||'')],
-    ['Troncal','Manzanas'],
-  ];
+  // ── Estilos base ──
+  const CSS = `
+    body { font-family: Arial, sans-serif; font-size: 11pt; }
+    table { border-collapse: collapse; margin-bottom: 30px; }
+    td, th { border: 1px solid #ccc; padding: 3px 6px; min-width: 60px; white-space: nowrap; }
+    .hdr { background:#1e3a5f; color:white; font-weight:bold; text-align:center; }
+    .hdr2 { background:#2d6a9f; color:white; font-weight:bold; }
+    .sub { background:#dbeafe; font-weight:bold; }
+    .done { background:#bbf7d0; }
+    .done.center { background:#bbf7d0; text-align:center; }
+    .center { text-align:center; }
+    .done.center { background:#bbf7d0; text-align:center; }
+    .done-center { background:#bbf7d0; text-align:center; }
+    .nap-done { background:#bbf7d0; font-weight:bold; }
+    .trk-done { background:#bbf7d0; text-align:center; }
+    .trk-empty { text-align:center; }
+    .right { text-align:right; }
+    .center { text-align:center; }
+    .sep { background:#f0f0f0; height:8px; }
+    h2 { color:#1e3a5f; margin:20px 0 6px; }
+    h3 { color:#2d6a9f; margin:14px 0 4px; border-bottom:2px solid #2d6a9f; padding-bottom:3px; }
+    .resumen td { min-width:120px; }
+    .pct { color:#059669; font-weight:bold; }
+  `;
+
+  let html_out = `<html><head><meta charset="UTF-8">
+    <style>${CSS}</style></head><body>`;
+  html_out += `<h2>Avance FTTH ${DATA.info.proyecto||sitio||''}</h2>`;
+
+  // ── Consolidado ──
+  let totalNaps=0, totalCdosDone=0, totalCdos=0;
+  html_out += `<h3>Consolidado</h3><table class="resumen">
+    <tr><th class="hdr">Troncal</th><th class="hdr">NAPs</th>
+        <th class="hdr">CDOs instalados</th><th class="hdr">CDOs totales</th>
+        <th class="hdr">Avance</th></tr>`;
   troncos.forEach(t=>{
-    const napsT = DATA.naps.filter(n=>troncoLetra(n.pc)===t);
-    consRows.push(['Troncal '+t, napsT.length]);
+    const napsT  = DATA.naps.filter(n=>troncoLetra(n.pc)===t);
+    const cdosT  = napsT.flatMap(n=>n.cdos);
+    const doneT  = cdosT.filter(c=>DONE(getS(c.id))).length;
+    const pctT   = cdosT.length ? (doneT/cdosT.length*100).toFixed(1) : '0.0';
+    totalNaps += napsT.length;
+    totalCdosDone += doneT;
+    totalCdos += cdosT.length;
+    html_out += `<tr>
+      <td class="hdr2">Troncal ${t}</td>
+      <td class="center">${napsT.length}</td>
+      <td class="center">${doneT}</td>
+      <td class="center">${cdosT.length}</td>
+      <td class="center pct">${pctT}%</td></tr>`;
   });
-  consRows.push(['Total', DATA.naps.length]);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(consRows), 'Consolidado');
+  const pctTotal = totalCdos ? (totalCdosDone/totalCdos*100).toFixed(1) : '0.0';
+  html_out += `<tr style="font-weight:bold;background:#f0f4ff">
+    <td>TOTAL</td><td class="center">${totalNaps}</td>
+    <td class="center">${totalCdosDone}</td>
+    <td class="center">${totalCdos}</td>
+    <td class="center pct">${pctTotal}%</td></tr></table>`;
 
-  // ── Una hoja por troncal principal ──
+  // ── Una sección por troncal ──
   troncos.forEach(tronco=>{
-    const pcsTronco = pcs.filter(pc=>troncoLetra(pc)===tronco).sort();  // ej [CMUAA, CMUAB, CMUAC]
-    const napsT = DATA.naps.filter(n=>troncoLetra(n.pc)===tronco);
-    const cdosT = napsT.flatMap(n=>n.cdos);
-    const cdosDoneT = cdosT.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
-    const avanceT = cdosT.length ? (cdosDoneT/cdosT.length*100).toFixed(1) : '0.0';
+    const pcsTronco = pcs.filter(pc=>troncoLetra(pc)===tronco).sort();
+    const napsT  = DATA.naps.filter(n=>troncoLetra(n.pc)===tronco);
+    const cdosT  = napsT.flatMap(n=>n.cdos);
+    const doneT  = cdosT.filter(c=>DONE(getS(c.id))).length;
+    const pctT   = cdosT.length ? (doneT/cdosT.length*100).toFixed(1) : '0.0';
 
-    const rows = [];
+    html_out += `<h3>Troncal ${tronco} — ${napsT.length} NAPs · Avance: <span class="pct">${pctT}%</span></h3>`;
 
-    // Header general del troncal
-    rows.push(['Avance FTTH ' + (DATA.info.proyecto||sitio||'') + ' — Troncal '+tronco]);
-    rows.push([]);
-    rows.push(['Nombre','Naps','CDO',null,null,null,null,
-               'Total NAPs','Avance total','Manzanas']);
-    rows.push([null,null,'A','B','C','D',null,
-               napsT.length, parseFloat(avanceT), napsT.length]);
-    rows.push([]);
-
-    // Por cada subtroncal (PC)
-    pcsTronco.forEach((pc, pcIdx)=>{
-      const subLabel = pcSuffix(pc);                    // ej 'AA','AB'
+    pcsTronco.forEach(pc=>{
+      const subLabel = pcSuffix(pc);
       const napsSub  = DATA.naps.filter(n=>n.pc===pc);
       const trksSub  = allTrks.filter(t=>t.pc===pc);
       const cdosSub  = napsSub.flatMap(n=>n.cdos);
-      const cdosDoneSub = cdosSub.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
-      const avanceSub = cdosSub.length ? (cdosDoneSub/cdosSub.length*100).toFixed(1) : '0.0';
+      const doneSub  = cdosSub.filter(c=>DONE(getS(c.id))).length;
+      const pctSub   = cdosSub.length ? (doneSub/cdosSub.length*100).toFixed(1) : '0.0';
 
-      // Subheader de este subtroncal
-      rows.push(['Subtroncal '+subLabel, null,null,null,null,null,null,
-                 'NAPs','Avance','Subtroncales','Cables']);
-      rows.push([null,null,'A','B','C','D',null,
-                 napsSub.length, parseFloat(avanceSub),
-                 null, null]);
+      html_out += `<table>
+        <tr>
+          <th class="sub" colspan="6">Subtroncal ${subLabel} — ${napsSub.length} NAPs · ${pctSub}%</th>
+          <th class="hdr" style="min-width:40px"></th>
+          <th class="hdr">Cable / Subtroncal</th>
+          <th class="hdr">Tend. FO</th>
+          <th class="hdr">Fusionado</th>
+          <th class="hdr">Abarca</th>
+        </tr>
+        <tr>
+          <th class="hdr">NAP</th>
+          <th class="hdr">NAP inst.</th>
+          <th class="hdr">CDO A</th>
+          <th class="hdr">CDO B</th>
+          <th class="hdr">CDO C</th>
+          <th class="hdr">CDO D</th>
+          <td></td><td></td><td></td><td></td><td></td>
+        </tr>`;
 
-      // Filas de NAPs de este subtroncal
       napsSub.forEach((nap, i)=>{
-        const sNap = getS(nap.id);
-        const ramaHecha = rama => {
+        const sNap   = getS(nap.id);
+        const napOk  = DONE(sNap);
+        const ramaOk = rama => {
           const cdos = nap.cdos.filter(c=>c.rama===rama);
-          return cdos.length > 0 && cdos.every(c=>['instalado','probado'].includes(getS(c.id)));
+          return cdos.length > 0 && cdos.every(c=>DONE(getS(c.id)));
         };
-        const row = [
-          nap.id,
-          DONE(sNap),
-          ramaHecha('A') ? 'XXXXX' : '',
-          ramaHecha('B') ? 'XXXXX' : '',
-          ramaHecha('C') ? 'XXXXX' : '',
-          ramaHecha('D') ? 'XXXXX' : '',
-          null,
-        ];
-        // Lateral: cables/subtroncales de este subtroncal
+        const A=ramaOk('A'), B=ramaOk('B'), C=ramaOk('C'), D=ramaOk('D');
+
+        // Columna lateral: cable/subtroncal
+        let lateralHTML = '<td></td><td></td><td></td><td></td><td></td>';
         if(i < trksSub.length){
-          const trk = trksSub[i];
-          const trkSt = getS(trk.id);
+          const trk   = trksSub[i];
+          const trkOk = DONE(getS(trk.id));
           const first = trk.naps[0]||'';
           const last  = trk.naps[trk.naps.length-1]||'';
-          row.push(null, trk.id, DONE(trkSt), `NAP ${first} AL ${last}`);
+          lateralHTML = `<td></td>
+            <td>${trk.id}</td>
+            <td style="${trkOk?'background-color:#bbf7d0;text-align:center;font-weight:bold':'text-align:center'}">${trkOk?'XXXXX':''}</td>
+            <td style="${trkOk?'background-color:#bbf7d0;text-align:center;font-weight:bold':'text-align:center'}">${trkOk?'XXXXX':''}</td>
+            <td>NAP ${first} AL ${last}</td>`;
         }
-        rows.push(row);
+
+        html_out += `<tr>
+          <td style="${napOk?'background-color:#bbf7d0;font-weight:bold':''}">${nap.id}</td>
+          <td style="${napOk?'background-color:#bbf7d0;text-align:center;font-weight:bold':'text-align:center'}">${napOk?'XXXXX':''}</td>
+          <td style="${A?'background-color:#bbf7d0;text-align:center;font-weight:bold':'text-align:center'}">${A?'XXXXX':''}</td>
+          <td style="${B?'background-color:#bbf7d0;text-align:center;font-weight:bold':'text-align:center'}">${B?'XXXXX':''}</td>
+          <td style="${C?'background-color:#bbf7d0;text-align:center;font-weight:bold':'text-align:center'}">${C?'XXXXX':''}</td>
+          <td style="${D?'background-color:#bbf7d0;text-align:center;font-weight:bold':'text-align:center'}">${D?'XXXXX':''}</td>
+          ${lateralHTML}
+        </tr>`;
       });
-
-      rows.push([]); // Separador entre subtroncales
+      html_out += `</table>`;
     });
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [
-      {wch:12},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},
-      {wch:3},{wch:4},{wch:14},{wch:10},{wch:20}
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, 'Troncal '+tronco);
   });
 
-  const fecha = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `Avance_${sitio||'FTTH'}_${fecha}.xlsx`);
+  html_out += '</body></html>';
+
+  // Descargar como .xls (Excel abre HTML con colores perfectamente)
+  const blob = new Blob([html_out], {type:'application/vnd.ms-excel;charset=utf-8'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const fecha= new Date().toISOString().slice(0,10);
+  a.href     = url;
+  a.download = `Avance_${sitio||'FTTH'}_${fecha}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
   toast('Excel exportado ✓');
 }
 
