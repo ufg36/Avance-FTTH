@@ -493,9 +493,12 @@ async function syncDown(){
   let changed = false;
   Object.entries(remote).forEach(([id, val])=>{
     // Solo pisamos si el remote es más nuevo que nuestro último push
-    if(!pendingSync[id]){
-      STATE[id] = val.estado;
-      changed = true;
+    // y si el estado remoto no es planificado (evita que Sheets pise un reset local)
+    if(!pendingSync[id] && val.estado && val.estado !== 'planificado'){
+      if(STATE[id] !== val.estado){
+        STATE[id] = val.estado;
+        changed = true;
+      }
     }
   });
   if(changed) { saveState(); refresh(); }
@@ -506,6 +509,20 @@ async function syncDown(){
 }
 
 // Sube un cambio individual
+async function clearSheets(){
+  // Borra todos los estados del sheet enviando estado 'planificado' para cada item
+  if(!currentUser) return;
+  const items = [...DATA.naps.map(n=>n.id),
+                 ...DATA.naps.flatMap(n=>n.cdos.map(c=>c.id)),
+                 ...(DATA.trkMap ? Object.keys(DATA.trkMap) : [])];
+  updateSyncBadge('uploading');
+  // Enviar en lote: un POST por ítem marcándolo como planificado
+  for(const id of items){
+    await sheetsSet(id, 'planificado');
+  }
+  updateSyncBadge('ok');
+}
+
 async function syncUp(id, estado){
   pendingSync[id] = estado;
   updateSyncBadge('uploading');
@@ -1333,11 +1350,12 @@ function exportCSV(){
 }
 
 function resetWork(){
-  if(!confirm('¿Borrar todos los estados de esta obra?')) return;
+  if(!confirm('¿Borrar todos los estados de esta obra? Esto también limpia Google Sheets.')) return;
   const k=stateKey(); if(k) localStorage.removeItem(k);
   STATE={};
   refresh();
-  toast('Estados reseteados');
+  toast('Limpiando Sheets...');
+  clearSheets().then(()=>toast('Estados reseteados ✓'));
 }
 
 function shareProgress(){
