@@ -388,7 +388,7 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--t
 
   <div class="bottom-bar">
     <div class="btn-row">
-      <button class="btn" onclick="exportCSV()">↓ CSV</button>
+      <button class="btn" onclick="exportXLS()">↓ Excel</button>
       <button class="btn" onclick="resetWork()">↺ Reset</button>
       <button class="btn primary" onclick="shareProgress()">Compartir</button>
     </div>
@@ -1352,17 +1352,111 @@ function switchTab(tab,el){
 }
 
 // ── Export / Share ────────────────────────────────────────────────
-function exportCSV(){
+function exportXLS(){
   if(!DATA) return;
-  const rows=['NAP,PC,Troncal,FO,Metros,Estado,CDOs_total,CDOs_listos'];
-  DATA.naps.forEach(n=>{
-    const cdoDone=n.cdos.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
-    rows.push(`${n.id},${n.pc},${n.trk},${n.fo},${n.metros},${ELABEL[getS(n.id)]},${n.cdos.length},${cdoDone}`);
+  toast('Generando Excel...');
+  const wb = XLSX.utils.book_new();
+  const DONE = s => ['instalado','probado'].includes(s) ? 'XXXXX' : '';
+  const allTrks = DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+  const sitio = DATA.info.sitio || '';
+
+  // ── Detectar troncales principales (ej: A, B, C, D)
+  // PC-CMUAA → troncal principal = A (tercer char del sufijo)
+  // Sufijo = pc.replace('PC-','').replace(sitio,'') → ej 'AA','AB','AC','CA'...
+  function pcSuffix(pc){ return pc.replace('PC-','').replace(sitio,''); }  // ej 'AA','AB','CA'
+  function troncoLetra(pc){ return pcSuffix(pc).charAt(0); }               // ej 'A','C','D'
+
+  const pcs = [...new Set(DATA.naps.map(n=>n.pc))];
+  const troncos = [...new Set(pcs.map(troncoLetra))].sort();               // ['A','C','D']
+
+  // ── Hoja Consolidado ──
+  const consRows = [
+    ['Avance FTTH ' + (DATA.info.proyecto||sitio||'')],
+    ['Troncal','Manzanas'],
+  ];
+  troncos.forEach(t=>{
+    const napsT = DATA.naps.filter(n=>troncoLetra(n.pc)===t);
+    consRows.push(['Troncal '+t, napsT.length]);
   });
-  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`avance_${DATA.info.sitio||'obra'}_${DATA.info.pd||''}.csv`;a.click();
-  toast('CSV exportado ✓');
+  consRows.push(['Total', DATA.naps.length]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(consRows), 'Consolidado');
+
+  // ── Una hoja por troncal principal ──
+  troncos.forEach(tronco=>{
+    const pcsTronco = pcs.filter(pc=>troncoLetra(pc)===tronco).sort();  // ej [CMUAA, CMUAB, CMUAC]
+    const napsT = DATA.naps.filter(n=>troncoLetra(n.pc)===tronco);
+    const cdosT = napsT.flatMap(n=>n.cdos);
+    const cdosDoneT = cdosT.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+    const avanceT = cdosT.length ? (cdosDoneT/cdosT.length*100).toFixed(1) : '0.0';
+
+    const rows = [];
+
+    // Header general del troncal
+    rows.push(['Avance FTTH ' + (DATA.info.proyecto||sitio||'') + ' — Troncal '+tronco]);
+    rows.push([]);
+    rows.push(['Nombre','Naps','CDO',null,null,null,null,
+               'Total NAPs','Avance total','Manzanas']);
+    rows.push([null,null,'A','B','C','D',null,
+               napsT.length, parseFloat(avanceT), napsT.length]);
+    rows.push([]);
+
+    // Por cada subtroncal (PC)
+    pcsTronco.forEach((pc, pcIdx)=>{
+      const subLabel = pcSuffix(pc);                    // ej 'AA','AB'
+      const napsSub  = DATA.naps.filter(n=>n.pc===pc);
+      const trksSub  = allTrks.filter(t=>t.pc===pc);
+      const cdosSub  = napsSub.flatMap(n=>n.cdos);
+      const cdosDoneSub = cdosSub.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+      const avanceSub = cdosSub.length ? (cdosDoneSub/cdosSub.length*100).toFixed(1) : '0.0';
+
+      // Subheader de este subtroncal
+      rows.push(['Subtroncal '+subLabel, null,null,null,null,null,null,
+                 'NAPs','Avance','Subtroncales','Cables']);
+      rows.push([null,null,'A','B','C','D',null,
+                 napsSub.length, parseFloat(avanceSub),
+                 null, null]);
+
+      // Filas de NAPs de este subtroncal
+      napsSub.forEach((nap, i)=>{
+        const sNap = getS(nap.id);
+        const ramaHecha = rama => {
+          const cdos = nap.cdos.filter(c=>c.rama===rama);
+          return cdos.length > 0 && cdos.every(c=>['instalado','probado'].includes(getS(c.id)));
+        };
+        const row = [
+          nap.id,
+          DONE(sNap),
+          ramaHecha('A') ? 'XXXXX' : '',
+          ramaHecha('B') ? 'XXXXX' : '',
+          ramaHecha('C') ? 'XXXXX' : '',
+          ramaHecha('D') ? 'XXXXX' : '',
+          null,
+        ];
+        // Lateral: cables/subtroncales de este subtroncal
+        if(i < trksSub.length){
+          const trk = trksSub[i];
+          const trkSt = getS(trk.id);
+          const first = trk.naps[0]||'';
+          const last  = trk.naps[trk.naps.length-1]||'';
+          row.push(null, trk.id, DONE(trkSt), `NAP ${first} AL ${last}`);
+        }
+        rows.push(row);
+      });
+
+      rows.push([]); // Separador entre subtroncales
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [
+      {wch:12},{wch:7},{wch:7},{wch:7},{wch:7},{wch:7},
+      {wch:3},{wch:4},{wch:14},{wch:10},{wch:20}
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Troncal '+tronco);
+  });
+
+  const fecha = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `Avance_${sitio||'FTTH'}_${fecha}.xlsx`);
+  toast('Excel exportado ✓');
 }
 
 function resetWork(){
