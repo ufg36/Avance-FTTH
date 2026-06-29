@@ -481,7 +481,7 @@ async function sheetsSet(id, estado){
   try{
     await fetch(SHEETS_URL, {
       method:'POST',
-      body: JSON.stringify({action:'set', id, estado, usuario:currentUser}),
+      body: JSON.stringify({action:'set', id: sheetId(id), estado, usuario:currentUser}),
     });
   }catch(e){ console.warn('sheetsSet error', e); }
 }
@@ -491,14 +491,19 @@ async function syncDown(){
   const remote = await sheetsGet();
   if(!remote) return;
   let changed = false;
-  Object.entries(remote).forEach(([id, val])=>{
-    // Solo pisamos si el remote es más nuevo que nuestro último push
-    // y si el estado remoto no es planificado (evita que Sheets pise un reset local)
-    if(!pendingSync[id] && val.estado && val.estado !== 'planificado'){
-      if(STATE[id] !== val.estado){
-        STATE[id] = val.estado;
-        changed = true;
-      }
+  const obra = obraKey();
+  Object.entries(remote).forEach(([rawId, val])=>{
+    const parsed = parseSheetId(rawId);
+    // Ignorar registros de otras obras
+    if(parsed.obra && parsed.obra !== obra) return;
+    const id = parsed.id;
+    // No pisar si está pendiente de subir localmente
+    if(pendingSync[id]) return;
+    // No pisar con planificado (evita que un reset en Sheets vuelva a aparecer)
+    if(!val.estado || val.estado === 'planificado') return;
+    if(STATE[id] !== val.estado){
+      STATE[id] = val.estado;
+      changed = true;
     }
   });
   if(changed) { saveState(); refresh(); }
@@ -510,16 +515,20 @@ async function syncDown(){
 
 // Sube un cambio individual
 async function clearSheets(){
-  // Borra todos los estados del sheet enviando estado 'planificado' para cada item
   if(!currentUser) return;
-  const items = [...DATA.naps.map(n=>n.id),
-                 ...DATA.naps.flatMap(n=>n.cdos.map(c=>c.id)),
-                 ...(DATA.trkMap ? Object.keys(DATA.trkMap) : [])];
+  // Recopilar todos los IDs de la obra activa
+  const items = [
+    ...DATA.naps.map(n=>n.id),
+    ...DATA.naps.flatMap(n=>n.cdos.map(c=>c.id)),
+    ...(DATA.trkMap ? Object.keys(DATA.trkMap) : [])
+  ];
   updateSyncBadge('uploading');
-  // Enviar en lote: un POST por ítem marcándolo como planificado
+  // Marcar cada ítem como planificado en Sheets con el prefijo de obra
   for(const id of items){
     await sheetsSet(id, 'planificado');
   }
+  // Limpiar también IDs viejos sin prefijo que puedan quedar en Sheets
+  pendingSync = {};
   updateSyncBadge('ok');
 }
 
@@ -553,6 +562,13 @@ const ECOLOR  = {planificado:'#6b7280',enconstruccion:'#f59e0b',instalado:'#3b82
 
 // ══ STATE PERSISTENCE ══════════════════════════════════════════════
 function stateKey(){ return DATA ? 'ftth_state_'+(DATA.info.sitio||'X')+(DATA.info.pd||'') : null; }
+function obraKey(){ return DATA ? (DATA.info.sitio||'OBRA') : 'OBRA'; }
+function sheetId(id){ return obraKey()+'|'+id; }  // ej: "CMU|CMUAA01C4"
+function parseSheetId(sheetId){ 
+  const sep = sheetId.indexOf('|');
+  if(sep < 0) return {obra: null, id: sheetId};  // compatibilidad con IDs viejos sin prefijo
+  return {obra: sheetId.substring(0,sep), id: sheetId.substring(sep+1)};
+}
 function loadState(){
   const k = stateKey(); if(!k) return;
   try{ const s=localStorage.getItem(k); if(s) STATE=JSON.parse(s); }catch(e){}
