@@ -347,7 +347,7 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--t
 
   <div class="navtabs">
     <button class="navtab active" onclick="switchTab('red',this)">Red</button>
-    <button class="navtab" onclick="switchTab('troncales',this)">Troncal</button>
+    <button class="navtab" onclick="switchTab('troncales',this)">Cables</button>
     <button class="navtab" onclick="switchTab('bom',this)">BOM</button>
     <button class="navtab" onclick="switchTab('avance',this)">Avance</button>
   </div>
@@ -355,14 +355,27 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--t
   <div class="content">
     <!-- RED -->
     <div id="panel-red" class="panel active">
-      <div class="search-wrap">
-        <div class="search-bar">
-          <span style="color:var(--text3);font-size:13px">⌕</span>
-          <input type="text" id="searchInput" placeholder="Buscar NAP o CDO..." oninput="renderNaps()">
-        </div>
-        <div class="filterbar" id="filterBar"></div>
+      <!-- Selector de troncal -->
+      <div id="troncoSelector" style="padding:10px 12px 0">
+        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Seleccioná un troncal</div>
+        <div id="troncoCards" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
-      <div class="list-area" id="napList"></div>
+      <!-- Vista de NAPs del troncal seleccionado -->
+      <div id="troncoDetail" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 12px 0">
+          <button onclick="volverTroncos()" style="background:none;border:1px solid var(--border2);border-radius:20px;padding:4px 10px;font-family:var(--font-mono);font-size:11px;color:var(--text2);cursor:pointer">‹ Volver</button>
+          <div id="troncoDetailTitle" style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--text)"></div>
+          <div id="troncoDetailPct" style="margin-left:auto;font-family:var(--font-mono);font-size:13px;font-weight:600"></div>
+        </div>
+        <div class="search-wrap" style="padding-top:8px">
+          <div class="search-bar">
+            <span style="color:var(--text3);font-size:13px">⌕</span>
+            <input type="text" id="searchInput" placeholder="Buscar NAP o CDO..." oninput="renderNaps()">
+          </div>
+          <div class="filterbar" id="filterBar"></div>
+        </div>
+        <div class="list-area" id="napList"></div>
+      </div>
     </div>
 
     <!-- TRONCALES -->
@@ -402,6 +415,7 @@ html,body{height:100%;background:var(--bg);font-family:var(--font);color:var(--t
 let DATA = null;        // Obra cargada
 let STATE = {};         // Estados guardados
 let activeFilter = 'ALL';
+let activeTronco = null;  // null = todos, 'A'/'B'/'C'/'D' = troncal específico
 let expandedId = null;
 let activeTab = 'red';
 
@@ -825,6 +839,7 @@ function showApp(){
   if(ul) ul.textContent = currentUser ? '👤 '+currentUser : '';
   buildFilters();
   refresh();
+  renderTroncoSelector();
   startAutoSync();
 }
 
@@ -838,7 +853,26 @@ function goBack(){
 
 function refresh(){
   renderMetrics();
-  renderNaps();
+  if(activeTab==='red'){
+    if(activeTronco){
+      renderNaps();
+      // Actualizar % del header
+      const napsT  = DATA.naps.filter(n=>troncoLetraFromPC(n.pc)===activeTronco);
+      const cdosT  = napsT.flatMap(n=>n.cdos);
+      const allTrks= DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+      const trksT  = allTrks.filter(t=>troncoLetraFromPC(t.pc)===activeTronco);
+      const cdoDoneT = cdosT.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+      const trkDoneT = trksT.filter(t=>['instalado','probado'].includes(getS(t.id))).length;
+      const napDoneT = napsT.filter(n=>['instalado','probado'].includes(getS(n.id))).length;
+      const ptsTot = trksT.length*PESO.troncal + napsT.length*PESO.nap + cdosT.length*PESO.cdo;
+      const ptsDone= trkDoneT*PESO.troncal + napDoneT*PESO.nap + cdoDoneT*PESO.cdo;
+      const pct = ptsTot ? Math.round(ptsDone/ptsTot*100) : 0;
+      const el = document.getElementById('troncoDetailPct');
+      if(el) el.textContent = pct+'%';
+    } else {
+      renderTroncoSelector();
+    }
+  }
   if(activeTab==='troncales') renderTroncales();
   if(activeTab==='avance') renderAvance();
   if(activeTab==='bom') renderBOM();
@@ -927,13 +961,103 @@ function renderMetrics(){
 }
 
 // ── Filters ──────────────────────────────────────────────────────
+function troncoLetraFromPC(pc){
+  const sitio = DATA.info.sitio||'';
+  return pc.replace('PC-','').replace(sitio,'').charAt(0);
+}
+
+function renderTroncoSelector(){
+  const sitio = DATA.info.sitio||'';
+  const pcs = [...new Set(DATA.naps.map(n=>n.pc))];
+  const troncos = [...new Set(pcs.map(troncoLetraFromPC))].sort();
+  const allTrks = DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+  const colors = {'A':'#3b82f6','B':'#10b981','C':'#f59e0b','D':'#ef4444','E':'#8b5cf6'};
+
+  document.getElementById('troncoCards').innerHTML = troncos.map(t=>{
+    const napsT  = DATA.naps.filter(n=>troncoLetraFromPC(n.pc)===t);
+    const cdosT  = napsT.flatMap(n=>n.cdos);
+    const doneT  = napsT.filter(n=>['instalado','probado'].includes(getS(n.id))).length;
+    const cdoDoneT = cdosT.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+    const trksT  = allTrks.filter(tr=>troncoLetraFromPC(tr.pc)===t);
+    const trkDoneT = trksT.filter(tr=>['instalado','probado'].includes(getS(tr.id))).length;
+    // Puntos ponderados
+    const ptsTot  = trksT.length*PESO.troncal + napsT.length*PESO.nap + cdosT.length*PESO.cdo;
+    const ptsDone = trkDoneT*PESO.troncal + doneT*PESO.nap + cdoDoneT*PESO.cdo;
+    const pct = ptsTot ? Math.round(ptsDone/ptsTot*100) : 0;
+    const col = colors[t]||'#6b7280';
+    // Subtroncales
+    const pcsTronco = [...new Set(napsT.map(n=>n.pc))].sort();
+    const subLabels = pcsTronco.map(pc=>pc.replace('PC-','').replace(sitio,'')).join(' · ');
+
+    return `<div onclick="entrarTronco('${t}')"
+      style="background:var(--bg2);border:1px solid var(--border);border-left:3px solid ${col};
+             border-radius:var(--r);padding:12px 14px;cursor:pointer;transition:border-color .15s">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-family:var(--font-mono);font-size:14px;font-weight:600;color:${col}">Troncal ${t}</span>
+        <span style="font-family:var(--font-mono);font-size:18px;font-weight:600;color:${pct>=80?'var(--green)':pct>=40?'var(--amber)':col}">${pct}%</span>
+      </div>
+      <div style="height:5px;border-radius:3px;background:var(--bg3);margin-bottom:8px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${col};border-radius:3px;transition:width .5s"></div>
+      </div>
+      <div style="display:flex;gap:12px;font-family:var(--font-mono);font-size:10px;color:var(--text2)">
+        <span>${napsT.length} NAPs</span>
+        <span>${cdosT.length} CDOs</span>
+        <span style="color:var(--green)">${doneT} inst.</span>
+        <span style="color:var(--text3)">${subLabels}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function entrarTronco(letra){
+  activeTronco = letra;
+  activeFilter = 'ALL';
+  const sitio  = DATA.info.sitio||'';
+  const colors = {'A':'#3b82f6','B':'#10b981','C':'#f59e0b','D':'#ef4444','E':'#8b5cf6'};
+  const col    = colors[letra]||'#6b7280';
+  const napsT  = DATA.naps.filter(n=>troncoLetraFromPC(n.pc)===letra);
+  const cdosT  = napsT.flatMap(n=>n.cdos);
+  const allTrks= DATA.trkMap ? Object.values(DATA.trkMap) : buildTrkMap();
+  const trksT  = allTrks.filter(t=>troncoLetraFromPC(t.pc)===letra);
+  const cdoDoneT = cdosT.filter(c=>['instalado','probado'].includes(getS(c.id))).length;
+  const trkDoneT = trksT.filter(t=>['instalado','probado'].includes(getS(t.id))).length;
+  const napDoneT = napsT.filter(n=>['instalado','probado'].includes(getS(n.id))).length;
+  const ptsTot = trksT.length*PESO.troncal + napsT.length*PESO.nap + cdosT.length*PESO.cdo;
+  const ptsDone= trkDoneT*PESO.troncal + napDoneT*PESO.nap + cdoDoneT*PESO.cdo;
+  const pct    = ptsTot ? Math.round(ptsDone/ptsTot*100) : 0;
+
+  document.getElementById('troncoSelector').style.display='none';
+  document.getElementById('troncoDetail').style.display='block';
+  document.getElementById('troncoDetailTitle').textContent='Troncal '+letra;
+  document.getElementById('troncoDetailTitle').style.color=col;
+  document.getElementById('troncoDetailPct').textContent=pct+'%';
+  document.getElementById('troncoDetailPct').style.color=pct>=80?'var(--green)':pct>=40?'var(--amber)':col;
+
+  buildFilters();
+  renderNaps();
+}
+
+function volverTroncos(){
+  activeTronco = null;
+  activeFilter = 'ALL';
+  document.getElementById('troncoDetail').style.display='none';
+  document.getElementById('troncoSelector').style.display='block';
+  renderTroncoSelector();
+}
+
 function buildFilters(){
   const bar = document.getElementById('filterBar');
-  const pcs = [...new Set(DATA.naps.map(n=>n.pc))];
-  const trks = [...new Set(DATA.naps.map(n=>n.trk))];
+  const sitio = DATA.info.sitio||'';
+  // Si hay troncal activo, mostrar sus subtroncales; si no, mostrar todos los troncales
+  let pcs;
+  if(activeTronco){
+    pcs = [...new Set(DATA.naps.filter(n=>troncoLetraFromPC(n.pc)===activeTronco).map(n=>n.pc))].sort();
+  } else {
+    pcs = [...new Set(DATA.naps.map(n=>n.pc))];
+  }
   const chips = [
-    {v:'ALL', l:'Todas'},
-    ...pcs.map(p=>({v:p, l:p.replace('PC-','')})),
+    {v:'ALL', l:'Todos'},
+    ...pcs.map(p=>({v:p, l:'Sub-'+p.replace('PC-','').replace(sitio,'')})),
     ...ESTADOS.map(s=>({v:s, l:ELABEL[s].split(' ')[0]}))
   ];
   bar.innerHTML = chips.map(c=>`<span class="chip ${c.v==='ALL'?'active':''}" data-v="${c.v}" onclick="setFilter(this)">${c.l}</span>`).join('');
@@ -949,8 +1073,10 @@ function setFilter(el){
 // ── NAP List ─────────────────────────────────────────────────────
 function renderNaps(){
   if(!DATA) return;
-  const q = document.getElementById('searchInput').value.toLowerCase();
+  const q = (document.getElementById('searchInput')||{}).value?.toLowerCase()||'';
   const filtered = DATA.naps.filter(n=>{
+    // Filtrar por troncal activo primero
+    if(activeTronco && troncoLetraFromPC(n.pc)!==activeTronco) return false;
     const s=getS(n.id);
     if(activeFilter==='ALL') return !q||n.id.toLowerCase().includes(q);
     if(activeFilter===n.pc||activeFilter===n.trk||activeFilter===s) return !q||n.id.toLowerCase().includes(q);
